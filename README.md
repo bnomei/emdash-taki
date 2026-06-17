@@ -215,6 +215,25 @@ The early group is controlled by the `emdash-taki` helpers.
 the EmDash fragment cache before stock `EmDashHead` runs, so the same stylesheet,
 preload, or script is not emitted twice.
 
+### Page cache assumptions
+
+`emdash-taki` resolves plugin contributions once per EmDash page context object.
+The native plugin keeps an in-memory `WeakMap` keyed by the exact `page` object
+that EmDash passes to `page:metadata` and `page:fragments`, so metadata and
+fragments share one resolver pass when both hooks run for the same page object.
+
+This cache is intentionally per plugin instance and per page object identity:
+
+- Reusing the same `page` object for multiple EmDash hook calls reuses the same
+  pending or fulfilled resolver promise.
+- Creating a new page context object, even with identical values, triggers a new
+  resolver pass.
+- Resolver output should therefore depend on the supplied `page`, runtime
+  options, and stable request context. Do not rely on resolver side effects
+  running separately for metadata and fragments on the same page object.
+- Because the cache uses `WeakMap`, entries can be garbage-collected after the
+  page object is no longer referenced by the host runtime.
+
 These helpers default to `phase: "early"` because Harry Roberts' head waterfall
 puts resource discovery before SEO/social metadata:
 
