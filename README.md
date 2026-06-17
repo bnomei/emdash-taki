@@ -24,6 +24,18 @@ on the server, and leave template-local rendering in Astro.
 - Optional fragment, Cloudflare, cache-busting, and waterfall helpers for
   special cases.
 
+
+## Security and raw helper trust boundaries
+
+Most typed helpers construct HTML for you and escape generated attributes or text
+where appropriate. The raw helpers `htmlFragment()`, `inlineScript()`, and
+`inlineStyle()` are deliberate escape hatches for content your application
+already trusts. Do not pass user-generated, CMS-authored, request-derived, or
+third-party values to them unless that data has been validated and sanitized for
+the exact HTML, JavaScript, or CSS context first.
+
+See [SECURITY.md](./SECURITY.md) for the full raw-helper trust-boundary guidance.
+
 ## Install
 
 ```sh
@@ -724,8 +736,9 @@ taki.inlineStyle(":root { color-scheme: light dark; }", {
 });
 ```
 
-Use this for small, trusted critical CSS. It is emitted as raw global CSS and is
-not scoped, bundled, deduped, or transformed by Astro.
+Use this for small, trusted critical CSS. It is a deliberate escape hatch: the
+CSS is emitted as raw global CSS and is not scoped, sanitized, bundled, deduped,
+or transformed by Astro. Do not interpolate untrusted values into inline CSS.
 
 ### `stylesheet(href, options)`
 
@@ -957,9 +970,10 @@ taki.inlineScript("window.exampleConfig = { enabled: true };", {
 });
 ```
 
-Use sparingly. Inline scripts in `<head>` can block parsing and interfere with
-stylesheet discovery when placed between CSS resources. Default placement is
-`"head"`.
+Use sparingly. This is a deliberate escape hatch for trusted JavaScript: the
+code is emitted as an inline script and is not sanitized by Taki. Inline scripts
+in `<head>` can block parsing and interfere with stylesheet discovery when
+placed between CSS resources. Default placement is `"head"`.
 
 ### `htmlFragment(html, options)`
 
@@ -971,8 +985,10 @@ taki.htmlFragment('<meta name="vendor-verification" content="abc123">', {
 });
 ```
 
-Use this when EmDash has no typed primitive or dedicated helper yet. Raw HTML is
-not scanned for `assetMap` replacements. Default placement is `"head"`.
+Use this when EmDash has no typed primitive or dedicated helper yet. This is a
+deliberate escape hatch for trusted markup: raw HTML is emitted as-is, is not
+sanitized, and is not scanned for `assetMap` replacements. Default placement is
+`"head"`.
 
 ### `cloudflareWebAnalytics(token, options)`
 
