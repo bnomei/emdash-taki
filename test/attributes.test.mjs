@@ -1,0 +1,60 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  externalScript,
+  inlineScript,
+  inlineStyle,
+  linkTag,
+  resolveTakiContributions,
+} from "../dist/index.mjs";
+
+const page = { kind: "page", pageType: "default", path: "/" };
+
+test("valid custom attributes continue to render", async () => {
+  const contributions = await resolveTakiContributions(
+    [
+      linkTag("preload", "/app.js", {
+        as: "script",
+        attributes: { "data-module": "app", nonce: "abc" },
+      }),
+    ],
+    page,
+  );
+
+  assert.equal(contributions.fragments.length, 1);
+  assert.equal(
+    contributions.fragments[0].html,
+    '<link data-module="app" nonce="abc" rel="preload" href="/app.js" as="script">',
+  );
+});
+
+test("invalid rendered HTML attribute names are rejected", async () => {
+  await assert.rejects(
+    () =>
+      resolveTakiContributions(
+        [inlineStyle("body{}", { attributes: { "bad name": "value" } })],
+        page,
+      ),
+    /Invalid HTML attribute name "bad name"/,
+  );
+});
+
+test("invalid fragment attribute names are rejected before renderer handoff", async () => {
+  await assert.rejects(
+    () =>
+      resolveTakiContributions(
+        [externalScript("/app.js", { attributes: { "onload=": "alert(1)" } })],
+        page,
+      ),
+    /Invalid HTML attribute name "onload="/,
+  );
+
+  await assert.rejects(
+    () =>
+      resolveTakiContributions(
+        [inlineScript("console.log('ok')", { attributes: { "data bad": "value" } })],
+        page,
+      ),
+    /Invalid HTML attribute name "data bad"/,
+  );
+});
