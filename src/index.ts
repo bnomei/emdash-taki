@@ -107,6 +107,7 @@ const CLOUDFLARE_TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0
 const HTTP_URL_RE = /^https?:\/\//i;
 const DATA_IMAGE_RE = /^data:image\//i;
 const OTHER_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
+const FORBIDDEN_HTML_ATTRIBUTE_NAME_CHARS = `"'>/=`;
 
 type ExternalScriptRule = Extract<TakiFragmentRule, { kind: "external-script" }>;
 type InlineScriptRule = Extract<TakiFragmentRule, { kind: "inline-script" }>;
@@ -908,6 +909,7 @@ function renderElement(
 
 function renderAttributes(attributes: TakiAttributes | undefined): string {
   if (!attributes) return "";
+  validateAttributeNames(attributes);
   return Object.entries(attributes)
     .filter(([, value]) => value !== undefined && value !== null && value !== false)
     .map(([key, value]) => {
@@ -916,6 +918,34 @@ function renderAttributes(attributes: TakiAttributes | undefined): string {
       return ` ${escapedKey}="${escapeHtmlAttr(String(value))}"`;
     })
     .join("");
+}
+
+function validateAttributeNames<T extends TakiAttributes | Record<string, string> | undefined>(
+  attributes: T,
+): T {
+  if (!attributes) return attributes;
+
+  for (const name of Object.keys(attributes)) {
+    if (!isValidHtmlAttributeName(name)) {
+      throw new Error(
+        `Invalid HTML attribute name "${name}". Attribute names must be non-empty and must not contain whitespace, control characters, quotes, apostrophes, ">", "/", or "=".`,
+      );
+    }
+  }
+
+  return attributes;
+}
+
+function isValidHtmlAttributeName(name: string): boolean {
+  if (name.length === 0) return false;
+
+  for (const char of name) {
+    const code = char.charCodeAt(0);
+    if (code <= 0x20 || (code >= 0x7f && code <= 0x9f)) return false;
+    if (FORBIDDEN_HTML_ATTRIBUTE_NAME_CHARS.includes(char)) return false;
+  }
+
+  return true;
 }
 
 function escapeHtmlAttr(value: string): string {
@@ -1006,7 +1036,7 @@ function collectFragments(
         src: resolveAssetUrl(rule.src, assetMap),
         async: rule.async,
         defer: rule.defer,
-        attributes: rule.attributes,
+        attributes: validateAttributeNames(rule.attributes),
         key: fragmentKey(rule, `script:${rule.src}`),
       });
     } else if (rule.kind === "inline-script") {
@@ -1014,7 +1044,7 @@ function collectFragments(
         kind: "inline-script",
         placement: rule.placement,
         code: rule.code,
-        attributes: rule.attributes,
+        attributes: validateAttributeNames(rule.attributes),
         key: fragmentKey(rule, `inline-script:${hashString(rule.code)}`),
       });
     } else if (rule.kind === "html") {
