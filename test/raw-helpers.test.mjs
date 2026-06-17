@@ -12,9 +12,10 @@ import {
 const page = { kind: "page", pageType: "page", path: "/", locale: null };
 
 test("typed HTML helpers escape attribute values", async () => {
-  const { fragments } = await resolveTakiContributions([
-    baseHref('/docs?x="<script>alert(1)</script>&y=1'),
-  ], page);
+  const { fragments } = await resolveTakiContributions(
+    [baseHref('/docs?x="<script>alert(1)</script>&y=1')],
+    page,
+  );
 
   assert.equal(
     fragments[0].html,
@@ -27,11 +28,10 @@ test("raw helpers preserve trusted HTML, script, and style escape-hatch content"
   const rawScript = 'window.example = "<unsafe>&raw";';
   const rawCss = 'body::before { content: "<unsafe>&raw"; }';
 
-  const { fragments } = await resolveTakiContributions([
-    htmlFragment(rawHtml),
-    inlineScript(rawScript),
-    inlineStyle(rawCss),
-  ], page);
+  const { fragments } = await resolveTakiContributions(
+    [htmlFragment(rawHtml), inlineScript(rawScript), inlineStyle(rawCss)],
+    page,
+  );
 
   assert.equal(fragments[0].html, rawHtml);
   assert.equal(fragments[1].code, rawScript);
@@ -39,9 +39,10 @@ test("raw helpers preserve trusted HTML, script, and style escape-hatch content"
 });
 
 test("inlineStyle prevents literal closing style tags from breaking the wrapper", async () => {
-  const { fragments } = await resolveTakiContributions([
-    inlineStyle('body::after { content: "</style><script>alert(1)</script>"; }'),
-  ], page);
+  const { fragments } = await resolveTakiContributions(
+    [inlineStyle('body::after { content: "</style><script>alert(1)</script>"; }')],
+    page,
+  );
 
   assert.equal(
     fragments[0].html,

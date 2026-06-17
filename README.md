@@ -24,7 +24,6 @@ on the server, and leave template-local rendering in Astro.
 - Optional fragment, Cloudflare, cache-busting, and waterfall helpers for
   special cases.
 
-
 ## Security and raw helper trust boundaries
 
 Most typed helpers construct HTML for you and escape generated attributes or text
