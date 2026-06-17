@@ -1058,7 +1058,7 @@ Arrays match any value. Multiple matcher objects also match any object.
 
 EmDash renders plugin metadata before site and base metadata. Since EmDash
 metadata dedupe is first-wins, `emdash-taki` rules can override defaults when
-they use the same metadata key.
+they use the same metadata key. Non-canonical metadata links dedupe by `rel` plus an explicit `key`, `hreflang`, or `href`; canonical links always share the `link:canonical` key so one canonical URL wins.
 
 Fragment order follows rule order within the fragment group. Metadata and
 fragments are separate groups in current EmDash core, so resource-order-sensitive
