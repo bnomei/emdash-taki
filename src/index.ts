@@ -857,7 +857,7 @@ function metadataDedupeKey(contribution: PageMetadataContribution): string | und
 
   if (contribution.kind === "link") {
     if (contribution.rel === "canonical") return "link:canonical";
-    return `link:${contribution.key ?? contribution.hreflang ?? contribution.href}`;
+    return `link:${contribution.rel}:${contribution.key ?? contribution.hreflang ?? contribution.href}`;
   }
 
   if (contribution.id) {
