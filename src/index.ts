@@ -95,7 +95,7 @@ export type {
 } from "./types";
 
 const PLUGIN_ID = "taki";
-const PLUGIN_VERSION = "0.1.1";
+const PLUGIN_VERSION = "0.1.2";
 const PACKAGE_NAME = "@bnomei/emdash-taki";
 const DEFAULT_RESOLVER = "default";
 const TEMPLATE_RESOLVER = "templates";
