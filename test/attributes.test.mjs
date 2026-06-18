@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  cloudflareTurnstile,
+  cloudflareWebAnalytics,
+  cloudflareZaraz,
   externalScript,
   inlineScript,
   inlineStyle,
@@ -53,6 +56,32 @@ test("invalid fragment attribute names are rejected before renderer handoff", as
     () =>
       resolveTakiContributions(
         [inlineScript("console.log('ok')", { attributes: { "data bad": "value" } })],
+        page,
+      ),
+    /Invalid HTML attribute name "data bad"/,
+  );
+});
+
+test("invalid Cloudflare helper attribute names are rejected before renderer handoff", async () => {
+  await assert.rejects(
+    () =>
+      resolveTakiContributions(
+        [cloudflareWebAnalytics("token", { attributes: { "x onload": "alert(1)" } })],
+        page,
+      ),
+    /Invalid HTML attribute name "x onload"/,
+  );
+
+  await assert.rejects(
+    () =>
+      resolveTakiContributions([cloudflareZaraz({ attributes: { "bad/name": "value" } })], page),
+    /Invalid HTML attribute name "bad\/name"/,
+  );
+
+  await assert.rejects(
+    () =>
+      resolveTakiContributions(
+        [cloudflareTurnstile({ attributes: { "data bad": "value" } })],
         page,
       ),
     /Invalid HTML attribute name "data bad"/,

@@ -95,7 +95,7 @@ export type {
 } from "./types";
 
 const PLUGIN_ID = "taki";
-const PLUGIN_VERSION = "0.1.0";
+const PLUGIN_VERSION = "0.1.1";
 const PACKAGE_NAME = "@bnomei/emdash-taki";
 const DEFAULT_RESOLVER = "default";
 const TEMPLATE_RESOLVER = "templates";
@@ -1148,10 +1148,10 @@ function cloudflareFragments(
         placement: rule.placement ?? "body:end",
         src: resolveAssetUrl(rule.src ?? CLOUDFLARE_WEB_ANALYTICS_SRC, assetMap),
         defer: true,
-        attributes: {
+        attributes: validateAttributeNames({
           ...rule.attributes,
           "data-cf-beacon": JSON.stringify(beacon),
-        },
+        }),
         key: fragmentKey(rule, "emdash-taki:cloudflare:web-analytics"),
       },
     ];
@@ -1163,10 +1163,10 @@ function cloudflareFragments(
         kind: "external-script",
         placement: rule.placement ?? "head",
         src: resolveAssetUrl(rule.src ?? CLOUDFLARE_ZARAZ_SRC, assetMap),
-        attributes: {
+        attributes: validateAttributeNames({
           ...rule.attributes,
           referrerpolicy: rule.referrerPolicy ?? "origin",
-        },
+        }),
         key: fragmentKey(rule, "emdash-taki:cloudflare:zaraz"),
       },
     ];
@@ -1193,7 +1193,7 @@ function cloudflareFragments(
     src: resolveAssetUrl(src, assetMap),
     async: rule.render !== "explicit",
     defer: true,
-    attributes: rule.attributes,
+    attributes: validateAttributeNames(rule.attributes),
     key: fragmentKey(rule, "emdash-taki:cloudflare:turnstile"),
   });
 
