@@ -396,6 +396,23 @@ describe("renderer contract", () => {
     });
   });
 
+  test("ignores null entries in when matcher arrays instead of crashing", async () => {
+    const { metadata } = await resolveTakiContributions(
+      [
+        meta("x", "y", { when: [null] }),
+        meta("kept", "yes", { when: [null, { pageType: "article" }] }),
+      ],
+      page,
+    );
+
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [{ name: "kept", content: "yes" }],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+  });
+
   test("pathPrefix matcher skips rules instead of crashing when page.path is absent", async () => {
     const pathlessPage = { kind: "content", pageType: "page" };
     const { metadata } = await resolveTakiContributions(

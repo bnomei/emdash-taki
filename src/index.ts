@@ -1546,6 +1546,11 @@ function matchesPage(
 }
 
 function matchesSinglePage(matcher: TakiMatcher, page: TakiPageContext): boolean {
+  // A null / non-object entry in a when array (e.g. a buggy
+  // [cond && {...}].filter(Boolean) or JSON with holes) is treated as a
+  // non-match rather than crashing on matcher.kind, so sibling matchers in the
+  // array still evaluate.
+  if (!isRecord(matcher)) return false;
   if (matcher.kind !== undefined && !matchesOneOrMany(matcher.kind, page.kind)) return false;
   if (matcher.pageType !== undefined && !matchesOneOrMany(matcher.pageType, page.pageType))
     return false;

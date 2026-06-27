@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:1315-1338 | when-null-matcher-crash
 
 # Null elements in when matcher arrays crash page resolution
@@ -49,6 +49,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Confirmed TypeError for `when: [null]`.
+- 2026-06-27: fixed. Confirmed `matchesSinglePage` read `matcher.kind` with no guard, so a `null`/non-object entry in a `when` array (e.g. a buggy `[cond && {...}].filter(Boolean)` or JSON with holes) threw a TypeError and aborted head resolution for the page. Added an `isRecord(matcher)` guard at the top of `matchesSinglePage` returning false (non-match) for non-object entries, so a null entry is ignored and sibling matchers in the array still evaluate. A single `when: null` is unaffected — `matchesPage`'s `!matchers` check already treats it as match-all (omitted semantics). Related to but distinct from [[pathprefix-missing-path]] (missing page.path). Added regression test "ignores null entries in when matcher arrays instead of crashing" (asserts `when: [null]` skips the rule while `when: [null, {pageType}]` still matches). typecheck clean, full suite green (43 tests).
 
 DEVANA-KEY: src/index.ts:1315-1338 | when-null-matcher-crash
-DEVANA-SUMMARY: open | P2 | high | A null entry in a when matcher array crashes matchesSinglePage with TypeError and aborts head resolution.
+DEVANA-SUMMARY: fixed | P2 | high | matchesSinglePage now guards non-object matchers, so a null entry in a when array is a non-match instead of a TypeError that aborts resolution.
