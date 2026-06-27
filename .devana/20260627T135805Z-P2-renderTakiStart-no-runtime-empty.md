@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:460-487 | renderTakiStart-no-runtime-empty
 
 # renderTakiStart returns empty when renderTaki still renders without runtime
@@ -50,6 +50,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Reproduced with `locals: {}` on both helpers.
+- 2026-06-27: fixed via documentation (divergence is by design). Confirmed the divergence is semantically correct, not a defect: `renderTakiStart` emits only early page fragments, which are read from the EmDash page runtime via `getPageRuntime(locals)`, so without a runtime there are no fragments and `""` is the coherent result — the same output it returns when a runtime is present but has no early fragments. Adding a console.warn for the missing-runtime case was considered and rejected: it would conflate "no runtime" with the normal "no early fragments" case and produce noise on legitimate renders, and renderTakiStart is positioned as a pre-`EmDashHead` helper, not a standalone head renderer. `renderTaki` differs intentionally because it is the full-head path and can render `basics`/fallback SEO from the `page` context alone. Resolution per the report's suggested step: documented the empty-output behavior in the README `renderTakiStart` arguments section and contrasted it with `renderTaki`'s runtime-less fallback, with a hint to verify the runtime on `locals`. No code change.
 
 DEVANA-KEY: src/index.ts:460-487 | renderTakiStart-no-runtime-empty
-DEVANA-SUMMARY: open | P2 | high | Missing EmDash runtime makes renderTakiStart return "" while renderTaki still renders basics and fallback SEO metadata.
+DEVANA-SUMMARY: fixed | P2 | high | By-design: renderTakiStart is fragments-only and returns "" without a runtime; documented the behavior and its contrast with renderTaki's fallback in the README.

@@ -596,6 +596,15 @@ removes early fragments from EmDash's cached fragment list after rendering them,
 so stock `EmDashHead` still renders metadata, site identity, and late fragments
 without duplicating early resources.
 
+`renderTakiStart()` only emits early page fragments, which it reads from the
+EmDash page runtime in `locals`. When `locals` carries no runtime (for example a
+partially initialized `Astro.locals`), or when there are no early fragments, it
+returns an empty string. Unlike `renderTaki()` — which renders `basics` and
+fallback SEO metadata from the `page` context even without a runtime — there is
+no standalone fallback here, because early resource hints are defined by the
+runtime. If you see no early output, verify that EmDash populated the page
+runtime on `locals`.
+
 ### `renderTaki(page, locals, options)`
 
 Returns the full `<head>` contribution HTML that replaces EmDash's stock
