@@ -976,6 +976,22 @@ function emptyToUndefined(value: string | undefined): string | undefined {
   return value ? value : undefined;
 }
 
+// EmDash's resolvePageMetadata dedupes non-canonical links by
+// `key ?? hreflang ?? href` with no `rel`, so two links sharing an href but
+// differing in rel (e.g. alternate + author) would collapse at render even
+// though Taki keeps both. Emit a rel-aware dedupe key so EmDash matches Taki's
+// documented "rel plus key|hreflang|href" contract. Canonical is special-cased
+// by both layers (single "canonical" bucket) and needs no synthetic key.
+function linkContributionKey(
+  rel: string,
+  explicitKey: string | undefined,
+  hreflang: string | undefined,
+  href: string,
+): string | undefined {
+  if (rel === "canonical") return explicitKey;
+  return `${rel}:${explicitKey ?? hreflang ?? href}`;
+}
+
 function htmlLink(rel: string, href: string, options: TakiLinkTagOptions): TakiLinkTagRule {
   return { kind: "link-tag", rel, href, ...options };
 }
@@ -1136,12 +1152,13 @@ function collectMetadata(
         key: emptyToUndefined(rule.key),
       });
     } else if (rule.kind === "link") {
+      const resolvedHref = resolveAssetUrl(rule.href, assetMap);
       metadata.push({
         kind: "link",
         rel: rule.rel,
-        href: resolveAssetUrl(rule.href, assetMap),
+        href: resolvedHref,
         hreflang: rule.hreflang,
-        key: emptyToUndefined(rule.key),
+        key: linkContributionKey(rule.rel, emptyToUndefined(rule.key), rule.hreflang, resolvedHref),
       });
     } else if (rule.kind === "jsonld") {
       metadata.push({

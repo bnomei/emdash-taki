@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P1 | high | security=no
+DEVANA-STATE: fixed | P1 | high | security=no
 DEVANA-KEY: src/index.ts:849-861,992-999 | metadata-link-rel-dedupe-drop
 
 # Metadata links with different rel but same href are dropped at EmDash render
@@ -57,6 +57,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Confirmed with `node` repro: taki count 2, EmDash links count 1.
+- 2026-06-27: fixed. Confirmed Taki's `metadataDedupeKey` keys non-canonical links rel-aware (`link:rel:...`) so both survive Taki dedupe, but EmDash `resolvePageMetadata` dedupes them by `key ?? hreflang ?? href` with no rel, dropping the second rel at render. `collectMetadata` emitted `key: undefined`, so EmDash fell back to href and collapsed alternate+author. Fix per the report's suggested step: emit a rel-aware contribution key from `collectMetadata` via `linkContributionKey(rel, key, hreflang, href)` = `${rel}:${explicitKey ?? hreflang ?? href}` for non-canonical links, so EmDash's dedupe becomes rel-aware and matches Taki's documented contract; canonical returns no synthetic key (both layers already special-case the single "canonical" bucket), preserving the existing canonical dedupe. The injected key affects dedupe only, not rendering (EmDash renders rel/href/hreflang). Updated tests/metadata-dedupe.test.mjs to assert the new keys and, crucially, added downstream `resolvePageMetadata(...).links` assertions (the stage Taki tests previously skipped) proving alternate+author both render; same-rel+href still dedupes; canonical unchanged. typecheck clean, full suite green (37 tests).
 
 DEVANA-KEY: src/index.ts:849-861,992-999 | metadata-link-rel-dedupe-drop
-DEVANA-SUMMARY: open | P1 | high | Taki keeps alternate+author links with the same href, but EmDash resolvePageMetadata dedupes by href only and drops the second rel at render time.
+DEVANA-SUMMARY: fixed | P1 | high | collectMetadata now emits a rel-aware link key so EmDash's rel-blind link dedupe keeps same-href/different-rel links; tests extended through resolvePageMetadata.

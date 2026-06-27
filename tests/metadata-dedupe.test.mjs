@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { link, resolveTakiContributions } from "../dist/index.mjs";
+import { resolvePageMetadata } from "emdash/page";
 
 const page = {
   url: "https://example.com/articles/example",
@@ -28,15 +29,22 @@ test("non-canonical links with the same href but different rel values are preser
       rel: "alternate",
       href: "https://example.com/about",
       hreflang: undefined,
-      key: undefined,
+      key: "alternate:https://example.com/about",
     },
     {
       kind: "link",
       rel: "author",
       href: "https://example.com/about",
       hreflang: undefined,
-      key: undefined,
+      key: "author:https://example.com/about",
     },
+  ]);
+
+  // The rel-aware key must also survive EmDash's rel-blind link dedupe so both
+  // rels render. This is the downstream stage Taki tests previously skipped.
+  assert.deepEqual(resolvePageMetadata(result.metadata).links, [
+    { rel: "alternate", href: "https://example.com/about" },
+    { rel: "author", href: "https://example.com/about" },
   ]);
 });
 
@@ -55,7 +63,7 @@ test("non-canonical links with the same rel and href still dedupe last wins", as
       rel: "alternate",
       href: "https://example.com/about",
       hreflang: "en",
-      key: undefined,
+      key: "alternate:en",
     },
   ]);
 });
