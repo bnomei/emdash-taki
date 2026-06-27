@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P1 | high | security=yes
+DEVANA-STATE: fixed | P1 | high | security=yes
 DEVANA-KEY: src/index.ts:1111-1124,1251-1271 | basehref-javascript-scheme
 
 # Fragment base href accepts javascript: URLs
@@ -50,6 +50,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Verified runtime output `<base href="javascript:alert(1)">` from `resolveTakiContributions([baseHref("javascript:alert(1)")], page)`.
+- 2026-06-27: fixed. Confirmed URL-bearing fragment tags emitted resolved hrefs/srcs verbatim with no scheme allowlisting, so `<base href="javascript:...">` (the highest-impact case — it rewrites every relative link/form action to a javascript: URL) and script src/link href could carry executable schemes, reachable via the typed helper or an assetMap/resolver remap. Added `DANGEROUS_URL_SCHEME_RE` (javascript|vbscript|data|file|blob) and `isSafeFragmentUrl`, which normalizes by stripping ASCII whitespace/control chars (U+0000–U+0020) before testing — closing the `java\tscript:` style bypass that browsers tolerate. Applied it after `resolveAssetUrl` to `<base>`, `<link>`/typed link helpers, external scripts, and Cloudflare-injected scripts; an unsafe URL drops the whole fragment (renderLinkFragment/renderBaseFragment now return null; external/cloudflare scripts are skipped) and emits a console.warn. Relative, anchor, query, protocol-relative (//host), and http/https/at/mailto/tel URLs are unaffected. Raw htmlFragment() remains a documented trust boundary and is intentionally not filtered. Added regression tests "drops base and script fragments with dangerous URL schemes" (literal, leading-space, tab-embedded, data: script, and assetMap-remap cases) and "keeps base and script fragments with safe URL schemes". typecheck clean, full suite green (30 tests).
 
 DEVANA-KEY: src/index.ts:1111-1124,1251-1271 | basehref-javascript-scheme
-DEVANA-SUMMARY: open | P1 | high | Typed baseHref emits javascript: URLs into fragments without scheme filtering, enabling base-tag XSS when untrusted href data reaches the helper.
+DEVANA-SUMMARY: fixed | P1 | high | Fragment base/link/script URLs are now scheme-checked (whitespace-normalized) after assetMap resolution; dangerous-scheme fragments are dropped with a warning, closing the base-tag XSS.

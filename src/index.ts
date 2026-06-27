@@ -107,6 +107,7 @@ const CLOUDFLARE_TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0
 const HTTP_URL_RE = /^https?:\/\//i;
 const DATA_IMAGE_RE = /^data:image\//i;
 const OTHER_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
+const DANGEROUS_URL_SCHEME_RE = /^(?:javascript|vbscript|data|file|blob):/i;
 const FORBIDDEN_HTML_ATTRIBUTE_NAME_CHARS = `"'>/=`;
 
 type ExternalScriptRule = Extract<TakiFragmentRule, { kind: "external-script" }>;
@@ -985,6 +986,20 @@ function validateAttributeNames<T extends TakiAttributes | Record<string, string
   return attributes;
 }
 
+function isSafeFragmentUrl(value: string): boolean {
+  // Browsers ignore leading and embedded ASCII whitespace/control characters
+  // when resolving a URL's scheme (e.g. "java\tscript:"), so strip them before
+  // matching. Relative URLs, query/anchor fragments, and protocol-relative
+  // ("//host") URLs carry no scheme and are allowed; only explicit dangerous
+  // (executable or local-resource) schemes are rejected.
+  const normalized = value.replace(/[\u0000-\u0020]/g, "");
+  return !DANGEROUS_URL_SCHEME_RE.test(normalized);
+}
+
+function warnUnsafeFragmentUrl(tag: string, url: string): void {
+  console.warn(`Taki dropped a ${tag} fragment with an unsafe URL scheme`, { url });
+}
+
 function validateStaticFragmentAttributes(rules: TakiRule[], page: TakiPageContext): void {
   for (const rule of rules) {
     if (!hasValidatedFragmentAttributes(rule)) continue;
@@ -1100,14 +1115,19 @@ function collectFragments(
     if (!matchesPage(rule.when, page)) continue;
 
     if (rule.kind === "external-script") {
+      const attributes = validateAttributeNames(rule.attributes);
       const resolvedSrc = resolveAssetUrl(rule.src, assetMap);
+      if (!isSafeFragmentUrl(resolvedSrc)) {
+        warnUnsafeFragmentUrl("<script>", resolvedSrc);
+        continue;
+      }
       fragments.push({
         kind: "external-script",
         placement: rule.placement,
         src: resolvedSrc,
         async: rule.async,
         defer: rule.defer,
-        attributes: validateAttributeNames(rule.attributes),
+        attributes,
         key: fragmentKey(rule, `script:${resolvedSrc}`),
       });
     } else if (rule.kind === "inline-script") {
@@ -1126,13 +1146,21 @@ function collectFragments(
         key: fragmentKey(rule, `html:${hashString(rule.html)}`),
       });
     } else if (rule.kind === "link-tag") {
-      fragments.push(renderLinkFragment(rule, assetMap));
+      const fragment = renderLinkFragment(rule, assetMap);
+      if (fragment) fragments.push(fragment);
     } else if (rule.kind === "base") {
-      fragments.push(renderBaseFragment(rule, assetMap));
+      const fragment = renderBaseFragment(rule, assetMap);
+      if (fragment) fragments.push(fragment);
     } else if (rule.kind === "inline-style") {
       fragments.push(renderInlineStyleFragment(rule));
     } else if (isCloudflareRule(rule)) {
-      fragments.push(...cloudflareFragments(rule, assetMap));
+      for (const fragment of cloudflareFragments(rule, assetMap)) {
+        if (fragment.kind === "external-script" && !isSafeFragmentUrl(fragment.src)) {
+          warnUnsafeFragmentUrl("<script>", fragment.src);
+          continue;
+        }
+        fragments.push(fragment);
+      }
     }
   }
 
@@ -1142,7 +1170,7 @@ function collectFragments(
 function renderLinkFragment(
   rule: TakiLinkTagRule,
   assetMap?: TakiAssetMap,
-): PageFragmentContribution {
+): PageFragmentContribution | null {
   const {
     rel,
     href,
@@ -1158,6 +1186,10 @@ function renderLinkFragment(
     type,
   } = rule;
   const resolvedHref = resolveAssetUrl(href, assetMap);
+  if (!isSafeFragmentUrl(resolvedHref)) {
+    warnUnsafeFragmentUrl(`<link rel="${rel}">`, resolvedHref);
+    return null;
+  }
   const attrs: TakiAttributes = {
     ...attributes,
     rel,
@@ -1183,9 +1215,13 @@ function renderLinkFragment(
 function renderBaseFragment(
   rule: TakiBaseHrefRule,
   assetMap?: TakiAssetMap,
-): PageFragmentContribution {
+): PageFragmentContribution | null {
   const { href, placement = "head", attributes } = rule;
   const resolvedHref = resolveAssetUrl(href, assetMap);
+  if (!isSafeFragmentUrl(resolvedHref)) {
+    warnUnsafeFragmentUrl("<base>", resolvedHref);
+    return null;
+  }
   return {
     kind: "html",
     placement,

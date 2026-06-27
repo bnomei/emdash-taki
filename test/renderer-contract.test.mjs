@@ -393,6 +393,51 @@ describe("renderer contract", () => {
     }
   });
 
+  test("drops base and script fragments with dangerous URL schemes", async () => {
+    const original = console.warn;
+    console.warn = () => {};
+    try {
+      const dangerous = [
+        baseHref("javascript:alert(1)"),
+        baseHref("  javascript:alert(1)"),
+        baseHref("java\tscript:alert(1)"),
+        externalScript("javascript:alert(1)"),
+        externalScript("data:text/javascript,alert(1)"),
+      ];
+      for (const rule of dangerous) {
+        const { fragments } = await resolveTakiContributions([rule], page);
+        assert.equal(renderFragments(fragments, "head"), "");
+      }
+
+      const remapped = await resolveTakiContributions([baseHref("/")], page, {
+        assetMap: { "/": "javascript:alert(1)" },
+      });
+      assert.equal(renderFragments(remapped.fragments, "head"), "");
+    } finally {
+      console.warn = original;
+    }
+  });
+
+  test("keeps base and script fragments with safe URL schemes", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [
+        baseHref("/app/"),
+        externalScript("https://cdn.example/app.js"),
+        externalScript("//cdn.example/x.js"),
+      ],
+      page,
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      [
+        '<base href="/app/">',
+        '<script src="https://cdn.example/app.js"></script>',
+        '<script src="//cdn.example/x.js"></script>',
+      ].join("\n"),
+    );
+  });
+
   test("honours a present empty-string assetMap mapping over fuzzy candidates", async () => {
     const { fragments } = await resolveTakiContributions([externalScript("foo.js")], page, {
       assetMap: {
