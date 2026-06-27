@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-Priority: P2 | Confidence: high | Security-sensitive: no | Status: open
+Priority: P2 | Confidence: high | Security-sensitive: no | Status: fixed
 Location: src/index.ts:552-567,570-572 | Slug: runtime-reserved-keys
 
 # defineTakiRuntime drops templates when reserved keys appear in shorthand maps
@@ -55,6 +55,7 @@ After working this report, preserve the original finding body. Update line 2 `St
 ## Status Notes
 
 - 2026-06-25: open by Devana. Initial report written from static source inspection.
+- 2026-06-27: fixed. Confirmed `isRuntimeConfig` returns true whenever a `resolve`/`resolvers`/`templates` key is present, and the config branch of `normalizeRuntimeInput` copied only those three fields, silently dropping every other top-level entry of a shorthand template map. The two input shapes are genuinely ambiguous (a shorthand `resolve` entry is a function, same as config's `resolve`), so rather than re-detect, the fix folds the remaining non-reserved keys back in as shorthand template modules and merges them with any normalized `templates` (explicit `templates` wins on collision). Purely additive: a legitimate config object has no extra keys, so `rest` is empty and behavior is unchanged. Added regression test "keeps shorthand template entries that coexist with a reserved runtime key". typecheck clean, full suite green (21 tests).
 
 DEVANA-KEY: src/index.ts:570-572 | P2 | runtime-reserved-keys
-DEVANA-SUMMARY: Status=open | P2 high src/index.ts:570-572 - Reserved-key detection in defineTakiRuntime silently drops shorthand template map entries when resolve, resolvers, or templates is present.
+DEVANA-SUMMARY: Status=fixed | P2 high src/index.ts:570-572 - normalizeRuntimeInput now folds non-reserved top-level keys back in as template modules instead of dropping them when a reserved key is present.

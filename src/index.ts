@@ -555,12 +555,19 @@ function normalizeRuntimeInput(runtimeInput: TakiRuntimeInput): TakiRuntimeOptio
   }
 
   if (isRuntimeConfig(runtimeInput)) {
+    const { resolve, resolvers, templates, ...rest } = runtimeInput;
+    // A shorthand template map can legitimately contain a key named
+    // resolve/resolvers/templates. Treat the reserved keys as config and
+    // fold any remaining top-level entries back in as shorthand template
+    // modules rather than silently dropping them.
+    const merged = {
+      ...normalizeTemplateModules(rest as TakiTemplateModuleMap),
+      ...(templates ? normalizeTemplateModules(templates) : {}),
+    };
     return {
-      resolve: runtimeInput.resolve,
-      resolvers: runtimeInput.resolvers,
-      templates: runtimeInput.templates
-        ? normalizeTemplateModules(runtimeInput.templates)
-        : undefined,
+      resolve,
+      resolvers,
+      templates: Object.keys(merged).length > 0 ? merged : undefined,
     };
   }
 

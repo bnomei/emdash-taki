@@ -327,6 +327,25 @@ describe("renderer contract", () => {
     );
   });
 
+  test("keeps shorthand template entries that coexist with a reserved runtime key", async () => {
+    const plugin = createPlugin(
+      { rules: [templates()] },
+      {
+        article: () => [meta("description", "article template")],
+        product: () => [meta("description", "product template")],
+        resolve: () => [meta("description", "default resolver")],
+      },
+    );
+
+    const contributions = await plugin.hooks["page:metadata"].handler({ page }, ctx);
+    assert.deepEqual(resolvePageMetadata(contributions), {
+      meta: [{ name: "description", content: "article template" }],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+  });
+
   test("pathPrefix matcher skips rules instead of crashing when page.path is absent", async () => {
     const pathlessPage = { kind: "content", pageType: "page" };
     const { metadata } = await resolveTakiContributions(
