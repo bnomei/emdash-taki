@@ -689,6 +689,26 @@ describe("renderer contract", () => {
     assert.equal(descriptor.capabilities.includes("hooks.page-fragments:register"), false);
   });
 
+  test("warns and keeps siblings when a resolver returns a nested resolve rule", async () => {
+    const warnings = [];
+    const { metadata } = await resolveTakiContributions([resolve()], page, {
+      ctx: { log: { warn: (...args) => warnings.push(args) } },
+      resolve: () => [
+        meta("outer", "kept"),
+        { kind: "resolve", resolver: "default", input: { nested: true } },
+      ],
+    });
+
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [{ name: "outer", content: "kept" }],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0][0], /nested resolve rule/);
+  });
+
   test("keeps valid resolver rules when the return array contains a null entry", async () => {
     const { metadata } = await resolveTakiContributions([resolve()], page, {
       ctx,

@@ -746,6 +746,11 @@ async function resolveRules(
       if (normalized.assetMap) {
         assetMap = { ...assetMap, ...normalized.assetMap };
       }
+      if (normalized.nestedResolverCount > 0) {
+        options.ctx?.log?.warn?.(
+          `Taki resolver "${rule.resolver}" returned ${normalized.nestedResolverCount} nested resolve rule(s); nested resolvers are not executed and were ignored.`,
+        );
+      }
     } catch (error) {
       handleResolverError(rule, error, options);
     }
@@ -796,20 +801,32 @@ function templateNameFromContext(context: Parameters<TakiResolver>[0]) {
 function normalizeResolverResult(result: TakiResolverResult): {
   assetMap?: TakiAssetMap;
   rules: TakiStaticRule[];
+  nestedResolverCount: number;
 } {
-  if (!result) return { rules: [] };
+  if (!result) return { rules: [], nestedResolverCount: 0 };
 
-  if (Array.isArray(result)) {
-    return { rules: result.filter(isStaticRule) };
+  const flat = Array.isArray(result)
+    ? result
+    : [...(result.rules ?? []), ...(result.metadata ?? []), ...(result.fragments ?? [])];
+
+  const rules: TakiStaticRule[] = [];
+  let nestedResolverCount = 0;
+  for (const entry of flat) {
+    if (!isRecord(entry)) continue; // drop null / non-object entries
+    if (isResolverRule(entry)) {
+      // Resolver-returned `kind: "resolve"` rules are not executed (resolveRules
+      // is a single pass). Count them so the caller can surface the drop instead
+      // of discarding nested resolvers silently.
+      nestedResolverCount += 1;
+      continue;
+    }
+    rules.push(entry);
   }
 
   return {
-    assetMap: result.assetMap,
-    rules: [
-      ...(result.rules ?? []),
-      ...(result.metadata ?? []),
-      ...(result.fragments ?? []),
-    ].filter(isStaticRule),
+    assetMap: Array.isArray(result) ? undefined : result.assetMap,
+    rules,
+    nestedResolverCount,
   };
 }
 

@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | medium | security=no
+DEVANA-STATE: fixed | P2 | medium | security=no
 DEVANA-KEY: src/index.ts:639-680,721-738,1233-1235 | nested-resolve-rules-dropped
 
 # Nested resolve rules returned from resolvers are silently discarded
@@ -57,6 +57,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Confirmed nested resolve stripped with only outer metadata kept.
+- 2026-06-27: fixed (surfaced the silent drop; did not add nested-resolution as a feature). Confirmed `resolveRules` is a single pass and `normalizeResolverResult` filtered resolver-returned `kind:"resolve"` rules out via `isStaticRule`, so nested resolvers never ran and nothing was logged. The reported defect is the SILENCE ("changes semantics silently"); recursive nested resolution was rejected as out of scope for a bug fix — it needs cycle/depth limits, assetMap merge-order rules, and per-nested onError semantics, and the README documents flat returns. Fix: `normalizeResolverResult` now reports `nestedResolverCount` (resolve rules encountered), and `resolveRules` warns (`Taki resolver "X" returned N nested resolve rule(s); nested resolvers are not executed and were ignored.`) when any are dropped, while still keeping the valid sibling rules. The single-pass loop also folds in the [[resolver-null-entry-total-loss]] null guard. Added regression test "warns and keeps siblings when a resolver returns a nested resolve rule" (outer metadata kept; one warning emitted). typecheck clean, full suite green (45 tests).
 
 DEVANA-KEY: src/index.ts:639-680,721-738,1233-1235 | nested-resolve-rules-dropped
-DEVANA-SUMMARY: open | P2 | medium | Resolver-returned kind resolve rules are filtered out and never executed, with no warning.
+DEVANA-SUMMARY: fixed | P2 | medium | Resolver-returned nested resolve rules are still not executed (by design) but now warn instead of being dropped silently; valid siblings are kept.
