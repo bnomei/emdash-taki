@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:452-457,1237-1240 | early-key-prefix-hijack
 
 # User fragment keys can hijack the early-head prefix
@@ -50,6 +50,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Reproduced `isEarlyTakiFragment === true` for `externalScript` with manual prefixed key and no `phase`.
+- 2026-06-27: fixed. Confirmed `isEarlyTakiFragment` classifies by the `emdash-taki:early:` key prefix while `fragmentKey` only adds that prefix for `phase: "early"`, so a caller key already carrying the prefix is classified early (and stripped from EmDash's cache by `removeEarlyTakiFragments`) without opting in. The prefix-on-key is the intentional carrier for the early signal because the EmDash `PageFragmentContribution` type has no `phase` field to store it, so the namespace is reserved rather than replaceable. Fix: reject caller keys starting with the reserved prefix at the single choke point `fragmentKey`, with an error pointing authors at `{ phase: "early" }`. This also forecloses the double-prefix edge (a `phase:"early"` rule whose key already had the prefix). Legitimate helpers pass an unprefixed base key and let `fragmentKey` add the prefix, so nothing valid breaks. Added regression test "rejects fragment keys that use the reserved early prefix". typecheck clean, full suite green (34 tests).
 
 DEVANA-KEY: src/index.ts:452-457,1237-1240 | early-key-prefix-hijack
-DEVANA-SUMMARY: open | P2 | high | Keys starting with emdash-taki:early: enter the early waterfall without phase: early because classification checks prefix only.
+DEVANA-SUMMARY: fixed | P2 | high | fragmentKey now rejects caller keys starting with the reserved emdash-taki:early: prefix, so fragments can only enter the early waterfall via phase: "early".

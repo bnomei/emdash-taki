@@ -1392,6 +1392,17 @@ function isStaticRule(rule: TakiRule): rule is TakiStaticRule {
 }
 
 function fragmentKey(rule: { key?: string; phase?: TakiRenderPhase }, fallback: string): string {
+  // The early prefix is the internal marker that classifies a fragment as part
+  // of the early head waterfall (isEarlyTakiFragment) and opts it into
+  // removeEarlyTakiFragments. It is reserved: a caller key carrying it would be
+  // misclassified as early without phase: "early", so reject it and point
+  // authors at the supported opt-in.
+  if (rule.key !== undefined && rule.key.startsWith(EARLY_TAKI_FRAGMENT_KEY_PREFIX)) {
+    throw new Error(
+      `Fragment key "${rule.key}" must not start with the reserved "${EARLY_TAKI_FRAGMENT_KEY_PREFIX}" prefix. Use { phase: "early" } to mark a fragment as early.`,
+    );
+  }
+
   const key = rule.key ?? fallback;
   if (rule.phase === "early") return `${EARLY_TAKI_FRAGMENT_KEY_PREFIX}${key}`;
   return key;

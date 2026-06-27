@@ -361,6 +361,17 @@ describe("renderer contract", () => {
     });
   });
 
+  test("rejects fragment keys that use the reserved early prefix", async () => {
+    await assert.rejects(
+      () =>
+        resolveTakiContributions(
+          [externalScript("/v.js", { key: "emdash-taki:early:vendor" })],
+          page,
+        ),
+      /reserved "emdash-taki:early:" prefix/,
+    );
+  });
+
   test("treats an explicit empty-string metadata key as absent for dedupe", async () => {
     const { metadata } = await resolveTakiContributions(
       [
