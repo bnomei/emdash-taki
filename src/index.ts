@@ -486,9 +486,15 @@ export async function renderTakiStart(
 
   const fragments = await runtime.collectPageFragments(page);
   const earlyFragments = pageApi.resolveFragments(fragments.filter(isEarlyTakiFragment), "head");
+
+  // Render before mutating the shared EmDash fragment cache. If rendering
+  // throws, the early fragments stay in the cache so a later EmDashHead/
+  // renderTaki call still emits them, rather than leaving the request
+  // permanently missing those resources with no rollback.
+  const html = pageApi.renderFragments(earlyFragments, "head");
   removeEarlyTakiFragments(fragments);
 
-  return pageApi.renderFragments(earlyFragments, "head");
+  return html;
 }
 
 export async function renderTaki(

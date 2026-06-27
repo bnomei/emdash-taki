@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:460-472,813-816 | renderTakiStart-strip-before-render
 
 # renderTakiStart removes early fragments before render succeeds
@@ -46,6 +46,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Static ordering proof from source; pairs with EmDash render throw paths.
+- 2026-06-27: fixed. Confirmed `renderTakiStart` called `removeEarlyTakiFragments(fragments)` (which splices the shared EmDash cache array in place) before `renderFragments` returned, so a render throw left the cache permanently stripped and a later EmDashHead/renderTaki call in the same request emitted no early resources, with no rollback. Fix per the suggested step: render first, then strip only on success — `const html = renderFragments(...); removeEarlyTakiFragments(fragments); return html;`. On a render throw the strip never runs, so the early fragments remain in the cache and EmDashHead still emits them (possibly duplicated, but present — the safe failure mode). Added regression test "renderTakiStart leaves the fragment cache intact when rendering throws" using a raw early fragment whose boolean attribute throws inside EmDash renderAttributes; asserts the shared array is unmutated after the rejection (without the fix it would be spliced to empty before the throw). full suite green (44 tests).
 
 DEVANA-KEY: src/index.ts:460-472,813-816 | renderTakiStart-strip-before-render
-DEVANA-SUMMARY: open | P2 | high | renderTakiStart splices early fragments from the shared cache before renderFragments succeeds, so a render error leaves the cache permanently stripped.
+DEVANA-SUMMARY: fixed | P2 | high | renderTakiStart now renders before stripping early fragments from the shared cache, so a render failure no longer leaves the request permanently missing those resources.

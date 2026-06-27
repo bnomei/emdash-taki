@@ -151,6 +151,28 @@ describe("renderer contract", () => {
     ]);
   });
 
+  test("renderTakiStart leaves the fragment cache intact when rendering throws", async () => {
+    const earlyBad = {
+      kind: "external-script",
+      placement: "head",
+      src: "/x.js",
+      key: "emdash-taki:early:bad",
+      // Boolean attribute reaches EmDash renderAttributes raw (bypassing Taki
+      // collection) and throws there, simulating a render-time failure.
+      attributes: { nomodule: true },
+    };
+    const fragments = [earlyBad];
+    const locals = {
+      emdash: {
+        collectPageMetadata: async () => [],
+        collectPageFragments: async () => fragments,
+      },
+    };
+
+    await assert.rejects(() => renderTakiStart(page, locals));
+    assert.deepEqual(fragments, [earlyBad]);
+  });
+
   test("renderTaki renders basics before fallback metadata when no runtime is available", async () => {
     assert.equal(
       await renderTaki(
