@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:1261-1268 | assetmap-path-alias-gap
 
 # resolveAssetUrl misses slash-prefixed keys for dot-relative paths
@@ -67,6 +67,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Initial report written from static source inspection.
+- 2026-06-27: fixed. Confirmed the candidate set for `./scripts/app.js` was `{"./scripts/app.js","scripts/app.js","/./scripts/app.js"}` — never `/scripts/app.js` — so a slash-prefixed map key was missed and the raw path leaked through, while bare `scripts/app.js` reached it via the `/${value}` candidate. Added a canonicalized `bare = value.replace(/^\.?\/+/, "")` plus its `/${bare}` form to the candidate set. The change is purely additive (no existing candidate removed), so prior matches are unchanged; the new candidates only add resolution where there was none. Added regression test "resolves dot-relative paths against slash-prefixed assetMap keys" covering ./-, bare, and /-prefixed spellings against one /-keyed map. Full suite green (26 tests).
 
 DEVANA-KEY: src/index.ts:1261-1268 | assetmap-path-alias-gap
-DEVANA-SUMMARY: open | P2 | high | resolveAssetUrl fuzzy lookup never tries slash-prefixed keys for ./-prefixed paths, so equivalent spellings resolve differently.
+DEVANA-SUMMARY: fixed | P2 | high | resolveAssetUrl now adds a canonicalized bare and slash-prefixed candidate, so ./-, bare, and /-prefixed spellings all resolve to the same assetMap key.

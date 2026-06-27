@@ -379,6 +379,20 @@ describe("renderer contract", () => {
     });
   });
 
+  test("resolves dot-relative paths against slash-prefixed assetMap keys", async () => {
+    const assetMap = { "/scripts/app.js": "/_astro/app.hash.js" };
+    for (const spelling of ["./scripts/app.js", "scripts/app.js", "/scripts/app.js"]) {
+      const { fragments } = await resolveTakiContributions([deferScript(spelling)], page, {
+        assetMap,
+      });
+      assert.equal(
+        renderFragments(fragments, "head"),
+        '<script src="/_astro/app.hash.js" defer></script>',
+        `spelling ${spelling} should resolve to the hashed URL`,
+      );
+    }
+  });
+
   test("honours a present empty-string assetMap mapping over fuzzy candidates", async () => {
     const { fragments } = await resolveTakiContributions([externalScript("foo.js")], page, {
       assetMap: {

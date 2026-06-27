@@ -1317,6 +1317,12 @@ function resolveAssetUrl(value: string, assetMap: TakiAssetMap | undefined): str
   candidates.add(value.replace(/^\/+/, ""));
   if (value.startsWith("./")) candidates.add(value.slice(2));
   if (!value.startsWith("/")) candidates.add(`/${value}`);
+  // Canonicalize a leading "./" or "/" to the bare and slash-prefixed forms so
+  // equivalent spellings (./scripts/app.js, scripts/app.js, /scripts/app.js)
+  // all reach the same assetMap key regardless of how the key is spelled.
+  const bare = value.replace(/^\.?\/+/, "");
+  candidates.add(bare);
+  candidates.add(`/${bare}`);
 
   for (const candidate of candidates) {
     if (Object.prototype.hasOwnProperty.call(assetMap, candidate)) return assetMap[candidate];
