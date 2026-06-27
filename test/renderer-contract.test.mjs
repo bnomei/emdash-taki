@@ -16,6 +16,7 @@ import {
   isEarlyTakiFragment,
   jsonLd,
   link,
+  linkTag,
   manifest,
   meta,
   preconnect,
@@ -468,6 +469,37 @@ describe("renderer contract", () => {
     } finally {
       console.warn = original;
     }
+  });
+
+  test("drops link-based fragment helpers with dangerous URL schemes", async () => {
+    const original = console.warn;
+    console.warn = () => {};
+    try {
+      const dangerous = [
+        feed("javascript:alert(1)"),
+        stylesheet("vbscript:msgbox(1)"),
+        linkTag("canonical", "javascript:alert(1)"),
+        preconnect("data:text/html,x"),
+      ];
+      for (const rule of dangerous) {
+        const { fragments } = await resolveTakiContributions([rule], page);
+        assert.equal(renderFragments(fragments, "head"), "");
+      }
+    } finally {
+      console.warn = original;
+    }
+  });
+
+  test("keeps protocol-relative resource URLs in link fragments", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [stylesheet("//cdn.example/app.css")],
+      page,
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      '<link rel="stylesheet" href="//cdn.example/app.css">',
+    );
   });
 
   test("strips event-handler attributes from rendered link, style, and base fragments", async () => {

@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P1 | high | security=yes
+DEVANA-STATE: fixed | P1 | high | security=yes
 DEVANA-KEY: src/index.ts:1032-1108,1251-1271 | fragment-href-scheme-bypass
 
 # Typed fragment helpers emit unsafe href and src schemes EmDash blocks for metadata
@@ -55,7 +55,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 
 ## Status Notes
 
-- 2026-06-27: open by Devana. Confirmed `feed("javascript:...")` and `externalScript("//...")` render unsafe URLs.
+- 2026-06-27: fixed (executable-scheme bypass) + documented decision on protocol-relative URLs. The core security gap — `javascript:`/`data:`/`vbscript:`/`file:`/`blob:` schemes reaching rendered head fragments via `feed()`, `linkTag()`, `preconnect()`, `stylesheet()`, `externalScript()`, and Cloudflare script helpers, including through assetMap remaps — is closed by the `isSafeFragmentUrl` gate introduced for [[basehref-javascript-scheme]] and applied (in this same branch) after `resolveAssetUrl` to base, link (renderLinkFragment, which backs every linkTag-based helper), external-script, and Cloudflare scripts. The check normalizes ASCII whitespace/control chars before matching, so split-scheme bypasses are covered too. Verified empirically: feed/linkTag(canonical)/preconnect/stylesheet/externalScript all drop dangerous schemes and warn. The remaining item — protocol-relative `//host` URLs — is intentionally NOT blocked: `//` carries no scheme and inherits the page's https origin, and is a standard, safe convention for loading CDN resources (scripts, stylesheets, feeds); blocking it would break legitimate usage and contradicts the resource-loading model. (Metadata link()'s stricter http/https/at-only policy reflects that canonical/alternate links should be absolute self-references; untrusted-origin risk for `//`/absolute resource URLs is an allowedHosts/CSP concern, not a scheme-filter one.) Added regression tests "drops link-based fragment helpers with dangerous URL schemes" and "keeps protocol-relative resource URLs in link fragments" (encoding the intentional `//` allowance). Effectively the same actionable finding as [[basehref-javascript-scheme]] generalized to link/script helpers; resolved by the shared gate. typecheck clean, full suite green (39 tests).
 
 DEVANA-KEY: src/index.ts:1032-1108,1251-1271 | fragment-href-scheme-bypass
-DEVANA-SUMMARY: open | P1 | high | Fragment link and script helpers emit javascript:, data:, and // URLs that metadata link() would block, including via assetMap remaps.
+DEVANA-SUMMARY: fixed | P1 | high | Dangerous-scheme bypass closed for all fragment link/script helpers via the shared isSafeFragmentUrl gate (after assetMap resolution); protocol-relative // is intentionally allowed as a safe resource convention.
