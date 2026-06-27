@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:1071-1108,870-880 | link-fragment-attr-dedupe-collapse
 
 # Link fragments differing only by media/type/sizes/as collapse to one
@@ -113,6 +113,7 @@ finding moves.
 
 - 2026-06-27: open by Devana. Static source inspection; confirmed against
   src/index.ts:1071-1108 and dedupe path 823-880; no covering test found.
+- 2026-06-27: fixed. Confirmed link/base fallback dedupe keys were `link:${rel}:${href}` / `base:${href}` while the tag rendered as/media/type/sizes/hreflang/crossorigin/fetchpriority/title, and external-script keyed on `script:${src}` while rendering async/defer/attributes — so distinct tags sharing rel+href (or src) collapsed under last-wins, silently dropping a variant. Inline-style had the same latent gap (`style:${hashString(css)}` ignored attributes). Fix applies the invariant "dedupe only fragments that render to the same output": link/base/inline-style now derive the fallback key from a hash of the fully rendered HTML (`hashString(html)`), and external-script uses a new `externalScriptDedupeKey(src, async, defer, attributes)` folding the resolved src, async/defer flags, and an attributes hash. Identical output still collapses (including assetMap-aliased hrefs/srcs — preserves [[assetmap-fragment-dedupe]]); differing output is now kept. Conservative by construction (a more granular key risks at worst a duplicate tag, never a dropped distinct one). Relaxed the one test that pinned the old opaque link key to assert the html/kind/placement instead. Added regression tests "keeps link/script fragments that share rel+href/src but render differently" (icon sizes, media stylesheets, async/defer/nonce scripts) and "still collapses link/script fragments that render identically". typecheck clean, full suite green (47 tests).
 
 DEVANA-KEY: src/index.ts:1071-1108,870-880 | link-fragment-attr-dedupe-collapse
-DEVANA-SUMMARY: open | P2 | high | Link fragments sharing rel+href but differing in media/type/sizes/as collapse under last-wins dedupe because the fallback key ignores those rendered attributes, silently dropping distinct tags.
+DEVANA-SUMMARY: fixed | P2 | high | Fragment fallback dedupe keys now derive from the rendered output (html hash for link/base/inline-style; src+async+defer+attributes for external-script), so tags sharing rel+href/src but rendering differently are no longer collapsed.

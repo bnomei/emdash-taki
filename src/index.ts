@@ -1245,7 +1245,10 @@ function collectFragments(
         async: rule.async,
         defer: rule.defer,
         attributes,
-        key: fragmentKey(rule, `script:${resolvedSrc}`),
+        // Fold async/defer/attributes into the fallback key so two scripts with
+        // the same src but different rendered output (e.g. nonce, type=module,
+        // async vs defer) are not collapsed by last-wins dedupe.
+        key: fragmentKey(rule, externalScriptDedupeKey(resolvedSrc, rule.async, rule.defer, attributes)),
       });
     } else if (rule.kind === "inline-script") {
       fragments.push({
@@ -1321,11 +1324,17 @@ function renderLinkFragment(
     type,
   };
 
+  // Derive the fallback dedupe key from the fully rendered tag so two links
+  // that share rel+href but differ in rendered attributes (sizes, media, type,
+  // as, crossorigin, ...) keep distinct keys instead of collapsing under
+  // last-wins. Identical output (including assetMap-aliased hrefs) still
+  // collapses.
+  const html = renderVoidElement("link", attrs);
   return {
     kind: "html",
     placement,
-    html: renderVoidElement("link", attrs),
-    key: fragmentKey(rule, `link:${rel}:${resolvedHref}`),
+    html,
+    key: fragmentKey(rule, `link:${hashString(html)}`),
   };
 }
 
@@ -1339,24 +1348,28 @@ function renderBaseFragment(
     warnUnsafeFragmentUrl("<base>", resolvedHref);
     return null;
   }
+  const html = renderVoidElement("base", {
+    ...attributes,
+    href: resolvedHref,
+  });
   return {
     kind: "html",
     placement,
-    html: renderVoidElement("base", {
-      ...attributes,
-      href: resolvedHref,
-    }),
-    key: fragmentKey(rule, `base:${resolvedHref}`),
+    html,
+    key: fragmentKey(rule, `base:${hashString(html)}`),
   };
 }
 
 function renderInlineStyleFragment(rule: TakiInlineStyleRule): PageFragmentContribution {
   const { css, placement = "head", attributes } = rule;
+  // Key off the rendered tag (css + attributes) so two inline styles with the
+  // same css but different media/attributes are not collapsed.
+  const html = renderElement("style", attributes, escapeStyleText(css));
   return {
     kind: "html",
     placement,
-    html: renderElement("style", attributes, escapeStyleText(css)),
-    key: fragmentKey(rule, `style:${hashString(css)}`),
+    html,
+    key: fragmentKey(rule, `style:${hashString(html)}`),
   };
 }
 
@@ -1478,6 +1491,18 @@ function fragmentKey(rule: { key?: string; phase?: TakiRenderPhase }, fallback: 
   const key = rule.key ?? fallback;
   if (rule.phase === "early") return `${EARLY_TAKI_FRAGMENT_KEY_PREFIX}${key}`;
   return key;
+}
+
+function externalScriptDedupeKey(
+  src: string,
+  async: boolean | undefined,
+  defer: boolean | undefined,
+  attributes: Record<string, string> | undefined,
+): string {
+  const flags = `${async ? "a" : ""}${defer ? "d" : ""}`;
+  const attrs =
+    attributes && Object.keys(attributes).length > 0 ? hashString(JSON.stringify(attributes)) : "";
+  return `script:${src}:${flags}:${attrs}`;
 }
 
 function hashString(value: string): string {

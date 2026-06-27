@@ -141,14 +141,11 @@ describe("renderer contract", () => {
     };
 
     assert.equal(await renderTakiStart(page, locals), '<link rel="stylesheet" href="/early.css">');
-    assert.deepEqual(fragments, [
-      {
-        kind: "html",
-        placement: "head",
-        html: '<link rel="icon" href="/favicon.svg" type="image/svg+xml">',
-        key: "link:icon:/favicon.svg",
-      },
-    ]);
+    assert.equal(fragments.length, 1);
+    assert.equal(fragments[0].kind, "html");
+    assert.equal(fragments[0].placement, "head");
+    assert.equal(fragments[0].html, '<link rel="icon" href="/favicon.svg" type="image/svg+xml">');
+    assert.equal(typeof fragments[0].key, "string");
   });
 
   test("renderTakiStart leaves the fragment cache intact when rendering throws", async () => {
@@ -590,6 +587,54 @@ describe("renderer contract", () => {
     });
 
     assert.equal(renderFragments(fragments, "head"), '<script src=""></script>');
+  });
+
+  test("keeps link/script fragments that share rel+href/src but render differently", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [
+        icon("/favicon.ico", { sizes: "16x16", type: "image/x-icon" }),
+        icon("/favicon.ico", { sizes: "32x32", type: "image/x-icon" }),
+        stylesheet("/app.css", { media: "screen" }),
+        stylesheet("/app.css", { media: "print" }),
+        externalScript("/app.js", { async: true }),
+        externalScript("/app.js", { defer: true }),
+        externalScript("/app.js", { attributes: { nonce: "abc" } }),
+      ],
+      page,
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      [
+        '<link rel="icon" href="/favicon.ico" sizes="16x16" type="image/x-icon">',
+        '<link rel="icon" href="/favicon.ico" sizes="32x32" type="image/x-icon">',
+        '<link rel="stylesheet" href="/app.css" media="screen">',
+        '<link rel="stylesheet" href="/app.css" media="print">',
+        '<script src="/app.js" async></script>',
+        '<script src="/app.js" defer></script>',
+        '<script src="/app.js" nonce="abc"></script>',
+      ].join("\n"),
+    );
+  });
+
+  test("still collapses link/script fragments that render identically", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [
+        icon("/favicon.ico", { sizes: "16x16" }),
+        icon("/favicon.ico", { sizes: "16x16" }),
+        externalScript("/app.js", { defer: true }),
+        externalScript("/app.js", { defer: true }),
+      ],
+      page,
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      [
+        '<link rel="icon" href="/favicon.ico" sizes="16x16">',
+        '<script src="/app.js" defer></script>',
+      ].join("\n"),
+    );
   });
 
   test("collapses fragments whose distinct source paths resolve to one assetMap URL", async () => {
