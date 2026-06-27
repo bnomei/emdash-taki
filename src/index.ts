@@ -1096,15 +1096,15 @@ function normalizeFragmentAttributes(
 function isSafeFragmentUrl(value: string): boolean {
   // Browsers ignore leading and embedded ASCII whitespace/control characters
   // when resolving a URL's scheme (e.g. "java\tscript:"), so strip them before
-  // matching. Relative URLs, query/anchor fragments, and protocol-relative
-  // ("//host") URLs carry no scheme and are allowed; only explicit dangerous
-  // (executable or local-resource) schemes are rejected.
+  // matching. Relative URLs and query/anchor fragments are allowed, but
+  // protocol-relative ("//host") URLs are rejected for typed fragment helpers
+  // because they can silently load same-scheme third-party resources.
   const normalized = value.replace(/[\u0000-\u0020]/g, "");
-  return !DANGEROUS_URL_SCHEME_RE.test(normalized);
+  return !normalized.startsWith("//") && !DANGEROUS_URL_SCHEME_RE.test(normalized);
 }
 
 function warnUnsafeFragmentUrl(tag: string, url: string): void {
-  console.warn(`Taki dropped a ${tag} fragment with an unsafe URL scheme`, { url });
+  console.warn(`Taki dropped a ${tag} fragment with an unsafe URL`, { url });
 }
 
 function validateStaticFragmentAttributes(rules: TakiRule[], page: TakiPageContext): void {

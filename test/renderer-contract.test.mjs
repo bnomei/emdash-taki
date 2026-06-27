@@ -482,7 +482,7 @@ describe("renderer contract", () => {
     );
   });
 
-  test("drops base and script fragments with dangerous URL schemes", async () => {
+  test("drops base and script fragments with unsafe URLs", async () => {
     const original = console.warn;
     console.warn = () => {};
     try {
@@ -490,8 +490,10 @@ describe("renderer contract", () => {
         baseHref("javascript:alert(1)"),
         baseHref("  javascript:alert(1)"),
         baseHref("java\tscript:alert(1)"),
+        baseHref("//evil.example/"),
         externalScript("javascript:alert(1)"),
         externalScript("data:text/javascript,alert(1)"),
+        externalScript("//evil.example/x.js"),
       ];
       for (const rule of dangerous) {
         const { fragments } = await resolveTakiContributions([rule], page);
@@ -502,18 +504,28 @@ describe("renderer contract", () => {
         assetMap: { "/": "javascript:alert(1)" },
       });
       assert.equal(renderFragments(remapped.fragments, "head"), "");
+
+      const remappedProtocolRelative = await resolveTakiContributions(
+        [externalScript("/app.js")],
+        page,
+        {
+          assetMap: { "/app.js": "//evil.example/app.js" },
+        },
+      );
+      assert.equal(renderFragments(remappedProtocolRelative.fragments, "head"), "");
     } finally {
       console.warn = original;
     }
   });
 
-  test("drops link-based fragment helpers with dangerous URL schemes", async () => {
+  test("drops link-based fragment helpers with unsafe URLs", async () => {
     const original = console.warn;
     console.warn = () => {};
     try {
       const dangerous = [
         feed("javascript:alert(1)"),
         stylesheet("vbscript:msgbox(1)"),
+        stylesheet("//cdn.example/app.css"),
         linkTag("canonical", "javascript:alert(1)"),
         preconnect("data:text/html,x"),
       ];
@@ -524,18 +536,6 @@ describe("renderer contract", () => {
     } finally {
       console.warn = original;
     }
-  });
-
-  test("keeps protocol-relative resource URLs in link fragments", async () => {
-    const { fragments } = await resolveTakiContributions(
-      [stylesheet("//cdn.example/app.css")],
-      page,
-    );
-
-    assert.equal(
-      renderFragments(fragments, "head"),
-      '<link rel="stylesheet" href="//cdn.example/app.css">',
-    );
   });
 
   test("strips event-handler attributes from rendered link, style, and base fragments", async () => {
@@ -563,7 +563,6 @@ describe("renderer contract", () => {
       [
         baseHref("/app/"),
         externalScript("https://cdn.example/app.js"),
-        externalScript("//cdn.example/x.js"),
       ],
       page,
     );
@@ -573,7 +572,6 @@ describe("renderer contract", () => {
       [
         '<base href="/app/">',
         '<script src="https://cdn.example/app.js"></script>',
-        '<script src="//cdn.example/x.js"></script>',
       ].join("\n"),
     );
   });
