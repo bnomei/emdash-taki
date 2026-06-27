@@ -674,9 +674,21 @@ async function resolveRules(
     if (!matchesPage(rule.when, page)) continue;
 
     const resolver = getResolver(rule.resolver, options);
-    if (!resolver || !options.ctx) {
-      const error = new Error(`Taki resolver "${rule.resolver}" is not registered`);
-      handleResolverError(rule, error, options);
+    if (!resolver) {
+      handleResolverError(
+        rule,
+        new Error(`Taki resolver "${rule.resolver}" is not registered`),
+        options,
+      );
+      continue;
+    }
+
+    if (!options.ctx) {
+      handleResolverError(
+        rule,
+        new Error(`Taki resolver "${rule.resolver}" requires a plugin "ctx" but none was provided`),
+        options,
+      );
       continue;
     }
 
@@ -768,9 +780,17 @@ function handleResolverError(
     throw error;
   }
 
-  options.ctx?.log.warn(`Taki resolver "${rule.resolver}" failed`, {
-    error: error instanceof Error ? error.message : String(error),
-  });
+  const message = `Taki resolver "${rule.resolver}" failed`;
+  const detail = { error: error instanceof Error ? error.message : String(error) };
+  // Fall back to console.warn when no plugin ctx is available (e.g. a direct
+  // resolveTakiContributions call without ctx) so the diagnostic is not
+  // silently swallowed by an undefined ctx.log.warn.
+  const warn = options.ctx?.log?.warn;
+  if (warn) {
+    warn(message, detail);
+  } else {
+    console.warn(message, detail);
+  }
 }
 
 function renderTakiBasics(options: TakiRenderOptions, page: TakiPageContext): string {

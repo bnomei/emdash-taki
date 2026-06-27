@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | medium | security=no
+DEVANA-STATE: fixed | P2 | medium | security=no
 DEVANA-KEY: src/index.ts:656-659,741-752 | resolver-skip-missing-ctx
 
 # Resolver rules silently skip when ctx is omitted
@@ -57,6 +57,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Initial report written from static source inspection.
+- 2026-06-27: fixed. Confirmed the combined `!resolver || !options.ctx` branch labelled a present-but-ctx-less resolver as "not registered", and `handleResolverError` logged through `options.ctx?.log.warn`, which is undefined exactly when ctx is missing — so the diagnostic was silently dropped. Split the branch so a missing resolver and a missing ctx produce distinct error messages (the latter: 'requires a plugin "ctx" but none was provided'). Made `handleResolverError` fall back to `console.warn` when `options.ctx?.log?.warn` is unavailable so the warning is visible on direct `resolveTakiContributions` calls. `onError: "throw"` still throws (now with the ctx-specific message); the skip-and-continue default is preserved but now logs. Added regression tests "warns via console when a resolver rule runs without ctx" and "throws a ctx-specific error when a missing-ctx resolver opts into onError throw". typecheck clean, full suite green (28 tests).
 
 DEVANA-KEY: src/index.ts:656-659,741-752 | resolver-skip-missing-ctx
-DEVANA-SUMMARY: open | P2 | medium | resolveTakiContributions drops resolver rules without ctx and logs nothing because warn uses options.ctx.
+DEVANA-SUMMARY: fixed | P2 | medium | Missing ctx now produces a distinct error message and a console.warn fallback instead of a silent "not registered" skip.

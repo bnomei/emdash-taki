@@ -422,6 +422,34 @@ describe("renderer contract", () => {
     );
   });
 
+  test("warns via console when a resolver rule runs without ctx", async () => {
+    const original = console.warn;
+    const warnings = [];
+    console.warn = (...args) => warnings.push(args);
+    let result;
+    try {
+      result = await resolveTakiContributions([resolve({ input: { source: "test" } })], page, {
+        resolve: () => [meta("description", "from resolver")],
+      });
+    } finally {
+      console.warn = original;
+    }
+
+    assert.deepEqual(result.metadata, []);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0][1].error, /requires a plugin "ctx"/);
+  });
+
+  test("throws a ctx-specific error when a missing-ctx resolver opts into onError throw", async () => {
+    await assert.rejects(
+      () =>
+        resolveTakiContributions([resolve({ onError: "throw" })], page, {
+          resolve: () => [meta("description", "x")],
+        }),
+      /requires a plugin "ctx" but none was provided/,
+    );
+  });
+
   test("evicts rejected resolver promises so the same page object can retry", async () => {
     let attempt = 0;
     const plugin = createPlugin(
