@@ -29,6 +29,8 @@ import {
   resolveTakiContributions,
   siteStandardDocument,
   stylesheet,
+  takiPlugin,
+  template,
   templates,
 } from "../dist/index.mjs";
 import {
@@ -569,6 +571,31 @@ describe("renderer contract", () => {
       links: [],
       jsonld: [],
     });
+  });
+
+  test("merges plugin templates options into explicit template rules", async () => {
+    const descriptor = takiPlugin({
+      runtime: "./src/emdash-taki-runtime.ts",
+      templates: { fragments: true },
+      rules: [template("article")],
+    });
+
+    const templateRule = descriptor.options.rules.find((rule) => rule.kind === "resolve");
+    assert.equal(templateRule.fragments, true);
+    assert.deepEqual(templateRule.when, { pageType: "article" });
+    assert.ok(descriptor.capabilities.includes("hooks.page-fragments:register"));
+  });
+
+  test("a per-rule template option still wins over the plugin default", async () => {
+    const descriptor = takiPlugin({
+      runtime: "./src/emdash-taki-runtime.ts",
+      templates: { fragments: true },
+      rules: [template("article", { fragments: false })],
+    });
+
+    const templateRule = descriptor.options.rules.find((rule) => rule.kind === "resolve");
+    assert.equal(templateRule.fragments, false);
+    assert.equal(descriptor.capabilities.includes("hooks.page-fragments:register"), false);
   });
 
   test("metadata-only resolvers are not blocked by invalid fragment output", async () => {

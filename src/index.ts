@@ -549,10 +549,22 @@ function createPluginOptions(options: TakiDescriptorOptions): TakiCreatePluginOp
 
 function createRules(options: TakiDescriptorOptions): TakiRule[] {
   const rules = [...(options.rules ?? [])];
+  const templateOptions = isRecord(options.templates) ? options.templates : {};
 
   if (shouldAutoRegisterTemplates(options, rules)) {
-    const templateOptions = isRecord(options.templates) ? options.templates : {};
     rules.push(templates(templateOptions));
+    return rules;
+  }
+
+  // Auto-registration was suppressed because explicit template() rules already
+  // exist. Plugin-level templates options (e.g. { fragments: true }) must still
+  // apply to those rules — otherwise the plugin-wide opt-in is silently dropped
+  // and the fragment hook never registers. Merge them as defaults so each
+  // rule's own explicitly-set options still win.
+  if (options.runtime && options.templates !== false && Object.keys(templateOptions).length > 0) {
+    return rules.map((rule) =>
+      isTemplateResolverRule(rule) ? ({ ...templateOptions, ...rule } as TakiRule) : rule,
+    );
   }
 
   return rules;

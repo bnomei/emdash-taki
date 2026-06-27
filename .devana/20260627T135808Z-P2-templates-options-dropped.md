@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:535-550,391-399 | templates-options-dropped
 
 # Plugin templates options are dropped when an explicit template rule exists
@@ -53,6 +53,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Verified `takiPlugin({ runtime, templates: { fragments: true }, rules: [template("article")] })` yields `fragments: undefined` on the rule.
+- 2026-06-27: fixed. Confirmed `shouldAutoRegisterTemplates` returns false when an explicit template resolver rule exists, so `createRules` never injected `templates(templateOptions)` and the plugin-level `templates: { fragments: true }` was dropped, leaving the rule with `fragments: undefined` and `fragmentCapabilities` omitting `hooks.page-fragments:register`. Fix: when auto-registration is suppressed but a runtime is configured, `templates !== false`, and plugin-level template options exist, merge those options into every explicit template resolver rule as defaults via `{ ...templateOptions, ...rule }`, so a rule's own explicitly-set options still win (e.g. `template("article", { fragments: false })` stays false) and per-rule `when`/`input` are preserved. Added regression tests "merges plugin templates options into explicit template rules" (fragments propagates, when preserved, capability registered) and "a per-rule template option still wins over the plugin default". typecheck clean, full suite green (36 tests).
 
 DEVANA-KEY: src/index.ts:535-550,391-399 | templates-options-dropped
-DEVANA-SUMMARY: open | P2 | high | Plugin templates: { fragments: true } is ignored when an explicit template() rule blocks auto-registration, so the fragment hook never registers.
+DEVANA-SUMMARY: fixed | P2 | high | createRules now merges plugin-level templates options into explicit template() rules (rule options win), so templates: { fragments: true } registers the fragment hook even with an explicit rule.
