@@ -904,17 +904,21 @@ function dedupeLastWins<T>(items: T[], keyFor: (item: T) => string | undefined):
 }
 
 function metadataDedupeKey(contribution: PageMetadataContribution): string | undefined {
+  // Treat an explicit empty-string key as absent so it falls back to the
+  // per-field identity instead of collapsing every "" rule into one bucket.
+  const key = "key" in contribution && contribution.key ? contribution.key : undefined;
+
   if (contribution.kind === "meta") {
-    return `meta:${contribution.key ?? contribution.name}`;
+    return `meta:${key ?? contribution.name}`;
   }
 
   if (contribution.kind === "property") {
-    return `property:${contribution.key ?? contribution.property}`;
+    return `property:${key ?? contribution.property}`;
   }
 
   if (contribution.kind === "link") {
     if (contribution.rel === "canonical") return "link:canonical";
-    return `link:${contribution.rel}:${contribution.key ?? contribution.hreflang ?? contribution.href}`;
+    return `link:${contribution.rel}:${key ?? contribution.hreflang ?? contribution.href}`;
   }
 
   if (contribution.id) {
@@ -946,6 +950,14 @@ function uniqueStrings(values: string[]): string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+// Treat an explicit empty-string key as absent. Carrying key: "" on a
+// contribution would collapse unrelated meta/property/link rules into one
+// dedupe bucket both here and in EmDash's own resolvePageMetadata (which keys
+// on `key ?? name`), so normalize it away at the source.
+function emptyToUndefined(value: string | undefined): string | undefined {
+  return value ? value : undefined;
 }
 
 function htmlLink(rel: string, href: string, options: TakiLinkTagOptions): TakiLinkTagRule {
@@ -1093,13 +1105,18 @@ function collectMetadata(
     if (!matchesPage(rule.when, page)) continue;
 
     if (rule.kind === "meta") {
-      metadata.push({ kind: "meta", name: rule.name, content: rule.content, key: rule.key });
+      metadata.push({
+        kind: "meta",
+        name: rule.name,
+        content: rule.content,
+        key: emptyToUndefined(rule.key),
+      });
     } else if (rule.kind === "property") {
       metadata.push({
         kind: "property",
         property: rule.property,
         content: rule.content,
-        key: rule.key,
+        key: emptyToUndefined(rule.key),
       });
     } else if (rule.kind === "link") {
       metadata.push({
@@ -1107,23 +1124,27 @@ function collectMetadata(
         rel: rule.rel,
         href: resolveAssetUrl(rule.href, assetMap),
         hreflang: rule.hreflang,
-        key: rule.key,
+        key: emptyToUndefined(rule.key),
       });
     } else if (rule.kind === "jsonld") {
-      metadata.push({ kind: "jsonld", id: rule.id ?? rule.key, graph: rule.graph });
+      metadata.push({
+        kind: "jsonld",
+        id: emptyToUndefined(rule.id) ?? emptyToUndefined(rule.key),
+        graph: rule.graph,
+      });
     } else if (rule.kind === "emdash:site-standard-document") {
       metadata.push({
         kind: "link",
         rel: "site.standard.document",
         href: resolveAssetUrl(rule.href, assetMap),
-        key: rule.key ?? "emdash-taki:site-standard-document",
+        key: emptyToUndefined(rule.key) ?? "emdash-taki:site-standard-document",
       });
     } else if (rule.kind === "emdash:nlweb") {
       metadata.push({
         kind: "link",
         rel: "nlweb",
         href: resolveAssetUrl(rule.href, assetMap),
-        key: rule.key ?? "emdash-taki:nlweb",
+        key: emptyToUndefined(rule.key) ?? "emdash-taki:nlweb",
       });
     }
   }

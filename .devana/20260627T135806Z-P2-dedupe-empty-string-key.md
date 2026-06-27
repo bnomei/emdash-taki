@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:849-861,829-846 | dedupe-empty-string-key
 
 # Empty string key collapses unrelated metadata rules
@@ -51,6 +51,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Reproduced via `resolveTakiContributions` with two `key: ""` meta rules.
+- 2026-06-27: fixed. Confirmed `metadataDedupeKey` used `contribution.key ?? contribution.name`, and `??` does not treat `""` as absent, so multiple `key: ""` rules collapsed into one `meta:`/`property:`/`link:rel:` bucket. While verifying the fix I found the collapse ALSO happens downstream in EmDash's own `resolvePageMetadata` (keys on `c.key ?? c.name` with the same bug) and in `renderPageMetadata`, so guarding only Taki's dedupe was insufficient — the empty key rode the contribution into EmDash. Root-cause fix: normalize an empty key to `undefined` at the contribution source in `collectMetadata` via a new `emptyToUndefined` helper (applied to meta/property/link keys, the jsonld id/key, and the emdash:site-standard-document / emdash:nlweb default keys), so both Taki and EmDash fall back to per-field identity. Also hardened `metadataDedupeKey` to treat an empty key as absent (defense in depth). Added regression test "treats an explicit empty-string metadata key as absent for dedupe" asserting through EmDash `resolvePageMetadata` (the path that still collapsed before the source-level fix). Fragment side was already safe per the report (truthy key check). typecheck clean, full suite green (33 tests).
 
 DEVANA-KEY: src/index.ts:849-861,829-846 | dedupe-empty-string-key
-DEVANA-SUMMARY: open | P2 | high | key: "" makes metadataDedupeKey collapse unrelated meta/property/link rules into one last-wins bucket.
+DEVANA-SUMMARY: fixed | P2 | high | Empty-string metadata keys are normalized to undefined at the contribution source (collectMetadata) so neither Taki nor EmDash collapses unrelated meta/property/link rules; dedupe key also hardened.

@@ -361,6 +361,27 @@ describe("renderer contract", () => {
     });
   });
 
+  test("treats an explicit empty-string metadata key as absent for dedupe", async () => {
+    const { metadata } = await resolveTakiContributions(
+      [
+        meta("description", "first", { key: "" }),
+        meta("keywords", "second", { key: "" }),
+        property("og:title", "third", { key: "" }),
+      ],
+      page,
+    );
+
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [
+        { name: "description", content: "first" },
+        { name: "keywords", content: "second" },
+      ],
+      properties: [{ property: "og:title", content: "third" }],
+      links: [],
+      jsonld: [],
+    });
+  });
+
   test("pathPrefix matcher skips rules instead of crashing when page.path is absent", async () => {
     const pathlessPage = { kind: "content", pageType: "page" };
     const { metadata } = await resolveTakiContributions(
