@@ -539,6 +539,32 @@ describe("renderer contract", () => {
     });
   });
 
+  test("metadata-only resolvers are not blocked by invalid fragment output", async () => {
+    const plugin = createPlugin(
+      { rules: [resolve()] },
+      {
+        resolve: () => [
+          meta("description", "ok"),
+          {
+            kind: "external-script",
+            placement: "head",
+            src: "/x.js",
+            attributes: { "bad name": "x" },
+          },
+        ],
+      },
+    );
+
+    assert.equal(plugin.hooks["page:fragments"], undefined);
+    const metadata = await plugin.hooks["page:metadata"].handler({ page }, ctx);
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [{ name: "description", content: "ok" }],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+  });
+
   test("registers fragment hooks only when dynamic handlers opt into fragments", async () => {
     const metadataOnlyPlugin = createPlugin(
       {

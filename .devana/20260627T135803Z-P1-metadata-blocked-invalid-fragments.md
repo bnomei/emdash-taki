@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P1 | high | security=no
+DEVANA-STATE: fixed | P1 | high | security=no
 DEVANA-KEY: src/index.ts:188-191,439-449,1203-1214 | metadata-blocked-invalid-fragments
 
 # Invalid resolver fragments block metadata when fragment hook is off
@@ -55,6 +55,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Reproduced via `createPlugin` metadata hook throw while `page:fragments` was undefined.
+- 2026-06-27: fixed. Confirmed `resolveTakiContributions` always ran `collectFragments`, so a malformed fragment returned by a metadata-only resolver (no `fragments: true`, no static fragment rules) threw during the shared metadata-hook path and dropped all valid plugin metadata, even though no `page:fragments` hook is registered and those fragments can never be published. Gated fragment collection on `usesFragments(rules)` — the same predicate `fragmentCapabilities` uses to decide whether to register the fragment hook — returning `[]` when fragments are not in use. When fragments are opted in (`fragments: true` or static fragment rules), collection still runs and validation still fails loudly as intended. Note this also adjusts the direct `resolveTakiContributions` API: resolver-returned fragments without opt-in are no longer collected, consistent with the documented `fragments: true` contract and with what the plugin would publish. Added regression test "metadata-only resolvers are not blocked by invalid fragment output" (asserts `page:fragments` is undefined and valid metadata still flows). Full suite green (32 tests).
 
 DEVANA-KEY: src/index.ts:188-191,439-449,1203-1214 | metadata-blocked-invalid-fragments
-DEVANA-SUMMARY: open | P1 | high | Metadata hook always collects fragments, so invalid resolver fragment output drops all plugin metadata even when the fragment hook is not registered.
+DEVANA-SUMMARY: fixed | P1 | high | Fragment collection is now gated on usesFragments(rules), so a malformed fragment from a metadata-only resolver no longer aborts metadata collection.

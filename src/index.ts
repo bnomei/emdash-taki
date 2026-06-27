@@ -451,9 +451,16 @@ export async function resolveTakiContributions(
 ) {
   const resolved = await resolveRules(rules, page, options);
 
+  // Only collect fragments when fragments are actually in use. Otherwise no
+  // page:fragments hook is registered (see fragmentCapabilities/usesFragments)
+  // and any fragments a resolver returns can never be published — so collecting
+  // them is wasted work, and worse, a malformed fragment would abort the shared
+  // metadata collection and drop otherwise-valid metadata for the page.
   return {
     metadata: dedupeMetadataLastWins(collectMetadata(resolved.rules, page, resolved.assetMap)),
-    fragments: dedupeFragmentsLastWins(collectFragments(resolved.rules, page, resolved.assetMap)),
+    fragments: usesFragments(rules)
+      ? dedupeFragmentsLastWins(collectFragments(resolved.rules, page, resolved.assetMap))
+      : [],
   };
 }
 
