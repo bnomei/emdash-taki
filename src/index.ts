@@ -761,8 +761,12 @@ function handleResolverError(
 
 function renderTakiBasics(options: TakiRenderOptions, page: TakiPageContext): string {
   const basics = options.basics ?? false;
-  const charset = optionValue(options.charset, basics ? "utf-8" : null);
-  const viewport = optionValue(options.viewport, basics ? "width=device-width" : null);
+  const charset = optionValue(options.charset, "utf-8", basics ? "utf-8" : null);
+  const viewport = optionValue(
+    options.viewport,
+    "width=device-width",
+    basics ? "width=device-width" : null,
+  );
   const title = titleValue(options.title, page, basics);
   const parts: string[] = [];
 
@@ -781,9 +785,13 @@ function renderTakiBasics(options: TakiRenderOptions, page: TakiPageContext): st
   return parts.join("\n");
 }
 
-function optionValue(value: boolean | string | undefined, fallback: string | null): string | null {
+function optionValue(
+  value: boolean | string | undefined,
+  trueValue: string,
+  fallback: string | null,
+): string | null {
   if (value === false) return null;
-  if (value === true) return fallback;
+  if (value === true) return trueValue;
   if (typeof value === "string") return value;
   return fallback;
 }

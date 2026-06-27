@@ -177,6 +177,21 @@ describe("renderer contract", () => {
     );
   });
 
+  test("renderTaki honours charset:true and viewport:true without basics", async () => {
+    const html = await renderTaki(
+      { ...page, title: "Example" },
+      {},
+      { charset: true, viewport: true, title: true },
+    );
+    const lines = html.split("\n");
+
+    assert.deepEqual(lines.slice(0, 3), [
+      '<meta charset="utf-8">',
+      '<meta name="viewport" content="width=device-width">',
+      "<title>Example</title>",
+    ]);
+  });
+
   test("renderTaki orders runtime output from basics through late fragments", async () => {
     primeSiteSettings({
       favicon: {

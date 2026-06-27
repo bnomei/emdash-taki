@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:755-792 | render-charset-viewport-basics
 
 # renderTaki charset and viewport true flags require basics
@@ -55,6 +55,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Initial report written from static source inspection.
+- 2026-06-27: fixed. Confirmed `optionValue` used a single `fallback` for both `value === true` and `value === undefined`, and the callers passed `basics ? "utf-8" : null` as that fallback, so an explicit `charset: true`/`viewport: true` collapsed to null when `basics` was false — unlike `titleValue`, which treats `true` as sufficient. Split `optionValue` into separate `trueValue` (the documented default, applied whenever the flag is `true`) and `fallback` (the basics-gated default for `undefined`). Now `charset: true`→`utf-8` and `viewport: true`→`width=device-width` regardless of `basics`, while `undefined` stays basics-gated and `false` still disables. Added regression test "renderTaki honours charset:true and viewport:true without basics". typecheck clean, full suite green (23 tests).
 
 DEVANA-KEY: src/index.ts:755-792 | render-charset-viewport-basics
-DEVANA-SUMMARY: open | P2 | high | renderTaki ignores charset:true and viewport:true unless basics:true, contradicting README while title:true works alone.
+DEVANA-SUMMARY: fixed | P2 | high | optionValue now applies the documented default for an explicit true flag regardless of basics, so charset:true/viewport:true emit without basics:true.
