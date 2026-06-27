@@ -88,6 +88,32 @@ test("resolver side effects do not run when a static rule has invalid attributes
   assert.equal(resolverRan, false);
 });
 
+test("resolver onError ignore tolerates invalid attributes in resolver fragment output", async () => {
+  const warnings = [];
+  const result = await resolveTakiContributions(
+    [resolve({ onError: "ignore", fragments: true })],
+    page,
+    {
+      ctx: { log: { warn: (...args) => warnings.push(args) } },
+      resolve: () => [externalScript("/x.js", { attributes: { "bad name": "x" } })],
+    },
+  );
+
+  assert.deepEqual(result.fragments, []);
+  assert.equal(warnings.length, 1);
+});
+
+test("resolver onError throw still rejects invalid attributes in resolver fragment output", async () => {
+  await assert.rejects(
+    () =>
+      resolveTakiContributions([resolve({ onError: "throw", fragments: true })], page, {
+        ctx: { log: { warn() {} } },
+        resolve: () => [externalScript("/x.js", { attributes: { "bad name": "x" } })],
+      }),
+    /Invalid HTML attribute name "bad name"/,
+  );
+});
+
 test("invalid Cloudflare helper attribute names are rejected before renderer handoff", async () => {
   await assert.rejects(
     () =>

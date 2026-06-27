@@ -686,6 +686,10 @@ async function resolveRules(
   // non-matching rules are skipped during collection and never throw.
   validateStaticFragmentAttributes(rules, page);
 
+  // Fragments are only collected (and thus validated) when they are in use; see
+  // resolveTakiContributions. Mirror that here so resolver-returned fragment
+  // validation does not drop a metadata-only resolver's output.
+  const collectsFragments = usesFragments(rules);
   const resolvedRules: TakiStaticRule[] = [];
   let assetMap = options.assetMap ? { ...options.assetMap } : undefined;
 
@@ -724,6 +728,14 @@ async function resolveRules(
         rule,
       });
       const normalized = normalizeResolverResult(result);
+      // Validate the resolver's fragment output here, inside this rule's
+      // try/catch, so a malformed attribute is governed by the rule's onError
+      // (ignore -> drop this resolver's contribution and warn; throw -> fail)
+      // instead of throwing later in collectFragments outside any onError
+      // handling. Validate before merging so a failing resolver contributes
+      // nothing, consistent with how a resolver throw is treated. Skip when
+      // fragments are not in use, since they are never collected or published.
+      if (collectsFragments) validateStaticFragmentAttributes(normalized.rules, page);
       resolvedRules.push(...normalized.rules);
       if (normalized.assetMap) {
         assetMap = { ...assetMap, ...normalized.assetMap };

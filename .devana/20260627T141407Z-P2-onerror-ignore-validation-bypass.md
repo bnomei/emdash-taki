@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:439-449,662-676,741-752,1039 | onerror-ignore-validation-bypass
 
 # onError ignore does not protect resolver output from attribute validation throws
@@ -57,6 +57,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Confirmed rejection with `onError: "ignore"` and invalid resolver-returned attribute.
+- 2026-06-27: fixed. Confirmed `validateAttributeNames` fired in `collectFragments`, after the resolver loop and outside its try/catch, so an invalid attribute in resolver-returned fragment output aborted the whole resolve pass regardless of `rule.onError`. Fix: validate the resolver's fragment output inside the resolver's own try/catch (before merging) via `validateStaticFragmentAttributes(normalized.rules, page)`, so a throw routes through `handleResolverError` and respects `onError` — `"ignore"` drops that resolver's contribution and warns (consistent with how a resolver throw is treated), `"throw"` rethrows and fails the page. Reconciled with [[metadata-blocked-invalid-fragments]]: that fix gates fragment collection on `usesFragments(rules)` so a metadata-only resolver's valid metadata survives a bad fragment; I gate this new resolver-output validation on the same `usesFragments(rules)` so it does not run (and thus does not drop the resolver's metadata) when fragments are not in use. Note the literal report counterexample (`resolve()` without `fragments: true`) no longer collects fragments at all post-[[metadata-blocked-invalid-fragments]]; this fix covers the live case of a `fragments: true` resolver with `onError: "ignore"`. Added regression tests "resolver onError ignore tolerates invalid attributes in resolver fragment output" and "resolver onError throw still rejects invalid attributes in resolver fragment output". typecheck clean, full suite green (41 tests).
 
 DEVANA-KEY: src/index.ts:439-449,662-676,741-752,1039 | onerror-ignore-validation-bypass
-DEVANA-SUMMARY: open | P2 | high | Resolver onError ignore does not catch validateAttributeNames throws on resolver-returned fragments, aborting the whole resolve pass.
+DEVANA-SUMMARY: fixed | P2 | high | Resolver-returned fragment attributes are now validated inside the resolver try/catch (gated on usesFragments), so onError ignore tolerates them and onError throw fails, instead of always aborting in collectFragments.
