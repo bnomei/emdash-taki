@@ -1434,7 +1434,10 @@ function isTemplateResolverRule(rule: TakiRule): boolean {
 }
 
 function isStaticRule(rule: TakiRule): rule is TakiStaticRule {
-  return !isResolverRule(rule);
+  // Guard against null / non-object entries a resolver may include in its
+  // return array (e.g. a missed filter(Boolean)). Without this, reading
+  // rule.kind throws while filtering and drops every co-returned rule.
+  return isRecord(rule) && !isResolverRule(rule);
 }
 
 function fragmentKey(rule: { key?: string; phase?: TakiRenderPhase }, fallback: string): string {

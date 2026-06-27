@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:662-676,721-728,1233-1235 | resolver-null-entry-total-loss
 
 # Null entries in resolver return arrays drop all resolver output on ignore
@@ -54,6 +54,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Confirmed empty metadata and warn when middle array entry is null.
+- 2026-06-27: fixed. Confirmed `isStaticRule` did `!isResolverRule(rule)` → `rule.kind === "resolve"`, which throws on a `null` (or non-object) array entry; `normalizeResolverResult`'s `filter(isStaticRule)` therefore threw, the catch routed to `handleResolverError`, and onError "ignore" dropped the entire resolver return (valid siblings included). Fix: make `isStaticRule` null/non-object-safe with `isRecord(rule) && !isResolverRule(rule)`, so a stray `null` is filtered out and valid co-returned rules survive — partial success as the ignore-mode contract implies. `isStaticRule` is only used by the two `normalizeResolverResult` filters, so the change is self-contained. A non-object entry is dropped silently (like a missed `filter(Boolean)`), which is the intended outcome. Added regression test "keeps valid resolver rules when the return array contains a null entry" (asserts both meta a and b survive through resolvePageMetadata). typecheck clean, full suite green (42 tests).
 
 DEVANA-KEY: src/index.ts:662-676,721-728,1233-1235 | resolver-null-entry-total-loss
-DEVANA-SUMMARY: open | P2 | high | A null entry in a resolver return array triggers normalizeResolverResult failure and onError ignore drops every rule from that resolver.
+DEVANA-SUMMARY: fixed | P2 | high | isStaticRule is now null/non-object-safe, so a null entry in a resolver return array is filtered out instead of throwing and discarding all co-returned rules.

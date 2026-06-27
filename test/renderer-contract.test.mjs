@@ -650,6 +650,23 @@ describe("renderer contract", () => {
     assert.equal(descriptor.capabilities.includes("hooks.page-fragments:register"), false);
   });
 
+  test("keeps valid resolver rules when the return array contains a null entry", async () => {
+    const { metadata } = await resolveTakiContributions([resolve()], page, {
+      ctx,
+      resolve: () => [meta("a", "1"), null, meta("b", "2")],
+    });
+
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [
+        { name: "a", content: "1" },
+        { name: "b", content: "2" },
+      ],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+  });
+
   test("metadata-only resolvers are not blocked by invalid fragment output", async () => {
     const plugin = createPlugin(
       { rules: [resolve()] },
