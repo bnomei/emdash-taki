@@ -655,6 +655,13 @@ async function resolveRules(
   page: TakiPageContext,
   options: TakiResolveOptions,
 ): Promise<{ assetMap?: TakiAssetMap; rules: TakiStaticRule[] }> {
+  // Preflight: reject invalid static fragment attribute names before any
+  // resolver runs, so a configuration mistake in a static rule cannot trigger
+  // resolver side effects (network reads/writes) on a page that can never
+  // produce valid head output. Only validates rules that match the page, since
+  // non-matching rules are skipped during collection and never throw.
+  validateStaticFragmentAttributes(rules, page);
+
   const resolvedRules: TakiStaticRule[] = [];
   let assetMap = options.assetMap ? { ...options.assetMap } : undefined;
 
@@ -956,6 +963,27 @@ function validateAttributeNames<T extends TakiAttributes | Record<string, string
   }
 
   return attributes;
+}
+
+function validateStaticFragmentAttributes(rules: TakiRule[], page: TakiPageContext): void {
+  for (const rule of rules) {
+    if (!hasValidatedFragmentAttributes(rule)) continue;
+    if (!matchesPage(rule.when, page)) continue;
+    validateAttributeNames(rule.attributes);
+  }
+}
+
+function hasValidatedFragmentAttributes(
+  rule: TakiRule,
+): rule is TakiRule & { attributes?: TakiAttributes | Record<string, string> } {
+  return (
+    rule.kind === "external-script" ||
+    rule.kind === "inline-script" ||
+    rule.kind === "link-tag" ||
+    rule.kind === "base" ||
+    rule.kind === "inline-style" ||
+    isCloudflareRule(rule)
+  );
 }
 
 function isValidHtmlAttributeName(name: string): boolean {

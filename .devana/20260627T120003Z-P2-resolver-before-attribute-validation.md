@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:439-449,1022-1068 | resolver-before-attribute-validation
 
 # Resolver side effects run before attribute validation can fail
@@ -70,6 +70,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Initial report written from static source inspection.
+- 2026-06-27: fixed. Confirmed `resolveRules` awaited the entire resolver loop before `collectFragments` reached `validateAttributeNames`, so a static fragment rule with an invalid attribute name let later resolver side effects commit before the pipeline threw. Added a preflight `validateStaticFragmentAttributes(rules, page)` at the top of `resolveRules` that validates attribute names on the fragment-producing rule kinds (external-script, inline-script, link-tag, base, inline-style, cloudflare:*) before any resolver runs. Two guards keep it behavior-preserving: it only covers kinds whose attributes are actually validated during collection (metadata rules are excluded — their link attributes are rendered later by emdash, not by our validator), and it only validates rules that `matchesPage`, mirroring collection which skips non-matching rules and never throws on them. Added regression test "resolver side effects do not run when a static rule has invalid attributes"; existing attribute-rejection tests still pass (now rejecting earlier). typecheck clean, full suite green (25 tests).
 
 DEVANA-KEY: src/index.ts:439-449,1022-1068 | resolver-before-attribute-validation
-DEVANA-SUMMARY: open | P2 | high | resolveRules runs all resolvers before collectFragments validates attributes, so resolver side effects commit even when a static rule will abort collection.
+DEVANA-SUMMARY: fixed | P2 | high | resolveRules now preflights static fragment attribute names (matching rules only) before invoking any resolver, so invalid static config fails before resolver side effects run.

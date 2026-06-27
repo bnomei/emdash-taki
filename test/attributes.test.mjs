@@ -8,6 +8,7 @@ import {
   inlineScript,
   inlineStyle,
   linkTag,
+  resolve,
   resolveTakiContributions,
 } from "../dist/index.mjs";
 
@@ -60,6 +61,31 @@ test("invalid fragment attribute names are rejected before renderer handoff", as
       ),
     /Invalid HTML attribute name "data bad"/,
   );
+});
+
+test("resolver side effects do not run when a static rule has invalid attributes", async () => {
+  let resolverRan = false;
+
+  await assert.rejects(
+    () =>
+      resolveTakiContributions(
+        [
+          externalScript("/a.js", { attributes: { "bad name": "x" } }),
+          resolve({ onError: "throw" }),
+        ],
+        page,
+        {
+          ctx: { log: { warn() {} } },
+          resolve: () => {
+            resolverRan = true;
+            return [];
+          },
+        },
+      ),
+    /Invalid HTML attribute name "bad name"/,
+  );
+
+  assert.equal(resolverRan, false);
 });
 
 test("invalid Cloudflare helper attribute names are rejected before renderer handoff", async () => {
