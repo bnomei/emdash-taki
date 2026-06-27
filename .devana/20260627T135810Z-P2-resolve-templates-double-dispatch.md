@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | medium | security=no
+DEVANA-STATE: wontfix | P2 | medium | security=no
 DEVANA-KEY: src/index.ts:535-550,546-550 | resolve-templates-double-dispatch
 
 # Explicit resolve rules do not suppress automatic template dispatch
@@ -56,6 +56,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Verified `takiPlugin({ runtime, rules: [resolve(...)] })` yields two resolver rules: `default` and `templates`.
+- 2026-06-27: wontfix (by design) + documentation clarified. The behavior is real but intentional and already consistent with the documented suppression rule: `shouldAutoRegisterTemplates` only treats an explicit **template** resolver rule (`resolver === "templates"`) as suppressing auto-registration, and the README states auto-registration is skipped by an explicit template rule or `templates: false` — not by a `resolve()` rule. The default resolver and the template dispatcher are independent and merge via last-wins dedupe, so stacking a custom `resolve()` with per-pageType template files is a supported combination, and `templates: false` is the escape hatch when a `resolve()` rule should fully replace automatic templates. Suppressing auto-templates on any `resolve()` presence was rejected: it would break the common "custom resolver + template files" setup and silently drop template output. Resolution per the report's suggested step: clarified the README `resolve(options)` section to state explicitly that `resolve()` does not suppress automatic template dispatch and how to opt out. No code change. Distinct from [[templates-options-dropped]] (explicit template() rule dropping plugin options, fixed separately).
 
 DEVANA-KEY: src/index.ts:535-550,546-550 | resolve-templates-double-dispatch
-DEVANA-SUMMARY: open | P2 | medium | Auto templates() still registers alongside explicit resolve() rules, so default and template resolvers both run per page.
+DEVANA-SUMMARY: wontfix | P2 | medium | Intentional: only an explicit template rule (or templates:false) suppresses auto template dispatch; resolve() stacks by design. README clarified with the opt-out.

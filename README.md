@@ -682,6 +682,15 @@ static JSON in `astro.config.mjs`, but can be computed from `event.page`,
 `ctx.content`, `ctx.media`, `ctx.kv`, or another server-side EmDash context API.
 The resolver input must be serializable.
 
+A `resolve()` rule does **not** suppress automatic template dispatch: with
+`takiPlugin({ runtime })`, the automatic `templates()` rule is still added unless
+`templates: false` is set or an explicit template rule exists. This is
+intentional — the default resolver and the template dispatcher are independent,
+and their contributions merge with last-wins dedupe, so you can combine custom
+`resolve()` logic with per-`pageType` template files. If you want a `resolve()`
+rule to fully replace automatic templates, set `templates: false` and add the
+template dispatch explicitly where you need it.
+
 Options:
 
 - `fragments`: set to `true` when this resolver can return page fragments and no
