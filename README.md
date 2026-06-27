@@ -230,6 +230,11 @@ This cache is intentionally per plugin instance and per page object identity:
 - Resolver output should therefore depend on the supplied `page`, runtime
   options, and stable request context. Do not rely on resolver side effects
   running separately for metadata and fragments on the same page object.
+- Treat the `page` object as immutable for the duration of a request. Because
+  the cache is keyed by object identity, mutating `page` fields (for example
+  `page.title`) after the first hook call does **not** re-run resolvers; the
+  first resolution is reused. If contributions must change, pass a new page
+  context object instead of mutating the existing one.
 - Because the cache uses `WeakMap`, entries can be garbage-collected after the
   page object is no longer referenced by the host runtime.
 

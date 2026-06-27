@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: wontfix | P2 | high | security=no
 DEVANA-KEY: src/index.ts:167-179 | pagecache-stale-page-mutation
 
 # Page cache ignores mutations on the same page object
@@ -54,6 +54,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Reproduced stale `page.title` via consecutive metadata hook calls on one page object.
+- 2026-06-27: wontfix (by design) + documentation clarified. The behavior is real and reproduces, but the WeakMap-by-identity cache is intentional: its purpose is to share one resolver pass between the `page:metadata` and `page:fragments` hooks when EmDash fires both for the same page object in a single render. README "Page cache assumptions" already documents that the same page object reuses the pending/fulfilled promise and that a new object triggers a new pass. The suggested fingerprint alternative was rejected as net-negative: resolvers can read arbitrary nested `page` fields, runtime options, and non-serializable `ctx`/external state, so no cheap fingerprint can soundly capture all resolution inputs, and a partial one would both defeat the intended within-render sharing and give a false sense of correctness. Mutating a shared page context between hook calls is outside the documented contract. Resolution: added an explicit README bullet stating the `page` object must be treated as immutable for the request (mutating fields after the first hook call does not re-run resolvers; pass a new page context object instead). No code change. Distinct from [[pagecache-rejected-promise]] (rejection stickiness, already fixed).
 
 DEVANA-KEY: src/index.ts:167-179 | pagecache-stale-page-mutation
-DEVANA-SUMMARY: open | P2 | high | pageCache keys only page object identity, so mutating page fields after the first hook call returns stale resolver output.
+DEVANA-SUMMARY: wontfix | P2 | high | By-design identity cache; documented that the page object must be treated as immutable per request (mutations are not re-resolved). Fingerprint key rejected as unsound/fragile.
