@@ -327,6 +327,24 @@ describe("renderer contract", () => {
     );
   });
 
+  test("pathPrefix matcher skips rules instead of crashing when page.path is absent", async () => {
+    const pathlessPage = { kind: "content", pageType: "page" };
+    const { metadata } = await resolveTakiContributions(
+      [
+        meta("robots", "noindex", { when: { pathPrefix: "/preview" } }),
+        meta("description", "always"),
+      ],
+      pathlessPage,
+    );
+
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [{ name: "description", content: "always" }],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+  });
+
   test("collapses fragments whose distinct source paths resolve to one assetMap URL", async () => {
     const { fragments } = await resolveTakiContributions(
       [deferScript("src/vendor.js"), deferScript("src/app.js")],

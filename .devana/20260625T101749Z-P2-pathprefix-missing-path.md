@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-Priority: P2 | Confidence: high | Security-sensitive: no | Status: open
+Priority: P2 | Confidence: high | Security-sensitive: no | Status: fixed
 Location: src/index.ts:1336-1349 | Slug: pathprefix-missing-path
 
 # pathPrefix matcher throws when page.path is absent
@@ -54,6 +54,7 @@ After working this report, preserve the original finding body. Update line 2 `St
 ## Status Notes
 
 - 2026-06-25: open by Devana. Initial report written from static source inspection.
+- 2026-06-27: fixed. Confirmed `matchesPrefix` called `path.startsWith(...)` with no guard, so a page stub lacking `path` threw a TypeError before any contributions were collected, while the sibling `path` matcher (`matchesOneOrMany`) tolerates undefined. `PublicPageContext.path` is typed `string`, but partial runtime stubs/fixtures can omit it. Widened the param to `string | undefined` and added a `typeof path !== "string"` guard returning false (non-match), matching the `path` matcher semantics. Added regression test "pathPrefix matcher skips rules instead of crashing when page.path is absent". Full suite green (20 tests).
 
 DEVANA-KEY: src/index.ts:1336-1349 | P2 | pathprefix-missing-path
-DEVANA-SUMMARY: Status=open | P2 high src/index.ts:1336-1349 - pathPrefix matching calls startsWith on page.path without a guard, crashing when path is undefined.
+DEVANA-SUMMARY: Status=fixed | P2 high src/index.ts:1336-1349 - matchesPrefix now guards non-string page.path and returns non-match instead of throwing.

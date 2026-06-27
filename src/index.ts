@@ -1348,6 +1348,7 @@ function matchesOneOrMany<T extends string | null | undefined>(
   return (Array.isArray(expected) ? expected : [expected]).includes(actual);
 }
 
-function matchesPrefix(prefix: string | string[], path: string): boolean {
+function matchesPrefix(prefix: string | string[], path: string | undefined): boolean {
+  if (typeof path !== "string") return false;
   return (Array.isArray(prefix) ? prefix : [prefix]).some((value) => path.startsWith(value));
 }
