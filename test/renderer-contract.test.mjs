@@ -364,6 +364,17 @@ describe("renderer contract", () => {
     });
   });
 
+  test("honours a present empty-string assetMap mapping over fuzzy candidates", async () => {
+    const { fragments } = await resolveTakiContributions([externalScript("foo.js")], page, {
+      assetMap: {
+        "foo.js": "",
+        "/foo.js": "https://cdn.example/REAL.js",
+      },
+    });
+
+    assert.equal(renderFragments(fragments, "head"), '<script src=""></script>');
+  });
+
   test("collapses fragments whose distinct source paths resolve to one assetMap URL", async () => {
     const { fragments } = await resolveTakiContributions(
       [deferScript("src/vendor.js"), deferScript("src/app.js")],

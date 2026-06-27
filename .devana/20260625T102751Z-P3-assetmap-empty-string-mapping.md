@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-Priority: P3 | Confidence: high | Security-sensitive: no | Status: open
+Priority: P3 | Confidence: high | Security-sensitive: no | Status: fixed
 Location: src/index.ts:1254-1255,1267-1268 | Slug: assetmap-empty-string-mapping
 
 # resolveAssetUrl ignores a present asset mapping whose value is the empty string
@@ -96,6 +96,7 @@ the evidence checked.
 ## Status Notes
 
 - 2026-06-25: open by Devana. Initial report written from static source inspection.
+- 2026-06-27: fixed. Confirmed both the exact branch (`if (exact)`) and the candidate loop (`if (resolved)`) tested value-truthiness, so a present key mapped to "" was skipped and the input could fall through to a neighbouring key's value or the raw path. Replaced both guards with `Object.prototype.hasOwnProperty.call(assetMap, key)` presence checks (hasOwn rather than `in` to avoid inherited/prototype keys). Chose the contract-faithful "presence is the oracle" interpretation: a key mapped to "" resolves to "" (emit empty) and takes precedence over fuzzy candidates. Added regression test "honours a present empty-string assetMap mapping over fuzzy candidates". Full suite green (22 tests).
 
 DEVANA-KEY: src/index.ts:1254-1255 | P3 | assetmap-empty-string-mapping
-DEVANA-SUMMARY: Status=open | P3 high src/index.ts:1254-1255 - resolveAssetUrl tests value-truthiness instead of key-presence, so a present assetMap entry mapping to "" is ignored and the input can resolve to a different key's value or the raw path.
+DEVANA-SUMMARY: Status=fixed | P3 high src/index.ts:1254-1255 - resolveAssetUrl now uses hasOwnProperty presence checks, so a present assetMap entry mapping to "" resolves to "" and keeps exact-match precedence over fuzzy candidates.

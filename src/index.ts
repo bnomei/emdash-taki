@@ -1261,8 +1261,10 @@ function hashString(value: string): string {
 function resolveAssetUrl(value: string, assetMap: TakiAssetMap | undefined): string {
   if (!assetMap) return value;
 
-  const exact = assetMap[value];
-  if (exact) return exact;
+  // Presence of the key — not truthiness of its value — is the oracle for an
+  // exact hit, so a key mapped to "" still takes precedence over the fuzzy
+  // candidate variants below and over the raw input.
+  if (Object.prototype.hasOwnProperty.call(assetMap, value)) return assetMap[value];
 
   if (/^[a-z][a-z\d+.-]*:/i.test(value) || value.startsWith("//") || value.startsWith("#")) {
     return value;
@@ -1274,8 +1276,7 @@ function resolveAssetUrl(value: string, assetMap: TakiAssetMap | undefined): str
   if (!value.startsWith("/")) candidates.add(`/${value}`);
 
   for (const candidate of candidates) {
-    const resolved = assetMap[candidate];
-    if (resolved) return resolved;
+    if (Object.prototype.hasOwnProperty.call(assetMap, candidate)) return assetMap[candidate];
   }
 
   return value;
