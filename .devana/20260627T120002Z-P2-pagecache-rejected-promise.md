@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=no
+DEVANA-STATE: fixed | P2 | high | security=no
 DEVANA-KEY: src/index.ts:167-179 | pagecache-rejected-promise
 
 # pageCache stores rejected resolver promises permanently
@@ -66,6 +66,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Initial report written from static source inspection.
+- 2026-06-27: fixed. Confirmed `resolveForPage` stored the `resolveTakiContributions` promise in the WeakMap with no rejection handler, so a thrown resolver (onError:"throw") or a validation throw pinned the rejection and every later hook call on the same page object replayed it. Attached a `.catch` that deletes the entry on rejection, guarded by `pageCache.get(page) === promise` to avoid evicting a newer entry. The returned promise still rejects to the caller — only the cache is cleared — and the catch chain handles its own rejection so there is no unhandled rejection. Successful and in-flight promises remain cached. Added regression test "evicts rejected resolver promises so the same page object can retry" (transient throw on attempt 1, recovers on attempt 2). Full suite green (24 tests).
 
 DEVANA-KEY: src/index.ts:167-179 | pagecache-rejected-promise
-DEVANA-SUMMARY: open | P2 | high | createPlugin pageCache reuses rejected promises forever, blocking retries on the same page object.
+DEVANA-SUMMARY: fixed | P2 | high | resolveForPage now evicts the pageCache entry on rejection so a transient/corrected failure can retry on the same page object; successes stay cached.

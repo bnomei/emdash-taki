@@ -175,6 +175,13 @@ export function createPlugin(
       resolvers: runtimeOptions.resolvers,
       templates: runtimeOptions.templates,
     });
+    // Cache in-flight and fulfilled results, but evict on rejection so a later
+    // hook call for the same page object can retry a transient or corrected
+    // failure instead of replaying the pinned rejection. The returned promise
+    // still rejects to the caller; only the cache entry is cleared.
+    promise.catch(() => {
+      if (pageCache.get(page) === promise) pageCache.delete(page);
+    });
     pageCache.set(page, promise);
     return promise;
   };

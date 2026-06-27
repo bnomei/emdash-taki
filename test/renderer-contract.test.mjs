@@ -408,6 +408,32 @@ describe("renderer contract", () => {
     );
   });
 
+  test("evicts rejected resolver promises so the same page object can retry", async () => {
+    let attempt = 0;
+    const plugin = createPlugin(
+      { rules: [resolve({ onError: "throw" })] },
+      {
+        resolve: () => {
+          attempt += 1;
+          if (attempt === 1) throw new Error("transient");
+          return [meta("ok", "recovered")];
+        },
+      },
+    );
+
+    const retryPage = { kind: "content", pageType: "page", path: "/retry" };
+    await assert.rejects(() => plugin.hooks["page:metadata"].handler({ page: retryPage }, ctx));
+    const metadata = await plugin.hooks["page:metadata"].handler({ page: retryPage }, ctx);
+
+    assert.equal(attempt, 2);
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [{ name: "ok", content: "recovered" }],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+  });
+
   test("registers fragment hooks only when dynamic handlers opt into fragments", async () => {
     const metadataOnlyPlugin = createPlugin(
       {
