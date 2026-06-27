@@ -986,6 +986,26 @@ function validateAttributeNames<T extends TakiAttributes | Record<string, string
   return attributes;
 }
 
+// EmDash renders script-fragment attributes itself via escapeHtmlAttr(value),
+// which calls value.replace(...) and so crashes on non-string values, and it
+// always emits key="value" (no bare-boolean form). Normalize values to strings
+// here so a boolean/number attribute (e.g. { nomodule: true }) from an untyped
+// caller or resolver does not crash page rendering: true -> present ("") and
+// false/null/undefined -> omitted, mirroring Taki's own renderAttributes.
+function normalizeFragmentAttributes(
+  attributes: TakiAttributes | Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!attributes) return undefined;
+  validateAttributeNames(attributes);
+
+  const normalized: Record<string, string> = {};
+  for (const [name, value] of Object.entries(attributes)) {
+    if (value === false || value === null || value === undefined) continue;
+    normalized[name] = value === true ? "" : String(value);
+  }
+  return normalized;
+}
+
 function isSafeFragmentUrl(value: string): boolean {
   // Browsers ignore leading and embedded ASCII whitespace/control characters
   // when resolving a URL's scheme (e.g. "java\tscript:"), so strip them before
@@ -1115,7 +1135,7 @@ function collectFragments(
     if (!matchesPage(rule.when, page)) continue;
 
     if (rule.kind === "external-script") {
-      const attributes = validateAttributeNames(rule.attributes);
+      const attributes = normalizeFragmentAttributes(rule.attributes);
       const resolvedSrc = resolveAssetUrl(rule.src, assetMap);
       if (!isSafeFragmentUrl(resolvedSrc)) {
         warnUnsafeFragmentUrl("<script>", resolvedSrc);
@@ -1135,7 +1155,7 @@ function collectFragments(
         kind: "inline-script",
         placement: rule.placement,
         code: rule.code,
-        attributes: validateAttributeNames(rule.attributes),
+        attributes: normalizeFragmentAttributes(rule.attributes),
         key: fragmentKey(rule, `inline-script:${hashString(rule.code)}`),
       });
     } else if (rule.kind === "html") {
@@ -1257,7 +1277,7 @@ function cloudflareFragments(
         placement: rule.placement ?? "body:end",
         src: resolveAssetUrl(rule.src ?? CLOUDFLARE_WEB_ANALYTICS_SRC, assetMap),
         defer: true,
-        attributes: validateAttributeNames({
+        attributes: normalizeFragmentAttributes({
           ...rule.attributes,
           "data-cf-beacon": JSON.stringify(beacon),
         }),
@@ -1272,7 +1292,7 @@ function cloudflareFragments(
         kind: "external-script",
         placement: rule.placement ?? "head",
         src: resolveAssetUrl(rule.src ?? CLOUDFLARE_ZARAZ_SRC, assetMap),
-        attributes: validateAttributeNames({
+        attributes: normalizeFragmentAttributes({
           ...rule.attributes,
           referrerpolicy: rule.referrerPolicy ?? "origin",
         }),
@@ -1302,7 +1322,7 @@ function cloudflareFragments(
     src: resolveAssetUrl(src, assetMap),
     async: rule.render !== "explicit",
     defer: true,
-    attributes: validateAttributeNames(rule.attributes),
+    attributes: normalizeFragmentAttributes(rule.attributes),
     key: fragmentKey(rule, "emdash-taki:cloudflare:turnstile"),
   });
 

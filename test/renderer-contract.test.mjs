@@ -393,6 +393,24 @@ describe("renderer contract", () => {
     }
   });
 
+  test("normalizes boolean and numeric script attributes to strings", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [
+        externalScript("/a.js", { attributes: { nomodule: true, hidden: false, "data-n": 3 } }),
+        inlineScript("ready()", { attributes: { defer: true } }),
+      ],
+      page,
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      [
+        '<script src="/a.js" nomodule="" data-n="3"></script>',
+        '<script defer="">ready()</script>',
+      ].join("\n"),
+    );
+  });
+
   test("drops base and script fragments with dangerous URL schemes", async () => {
     const original = console.warn;
     console.warn = () => {};

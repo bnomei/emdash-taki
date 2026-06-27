@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P1 | high | security=no
+DEVANA-STATE: fixed | P1 | high | security=no
 DEVANA-KEY: src/index.ts:1032-1041,923-937 | script-boolean-render-crash
 
 # Boolean script attributes crash EmDash renderFragments
@@ -49,6 +49,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Reproduced with `resolveTakiContributions` + `renderFragments` from `emdash/page`.
+- 2026-06-27: fixed. Confirmed external-script/inline-script (and Cloudflare-injected scripts) pushed `attributes` through `validateAttributeNames`, which checks names only, so a boolean/number value survived to EmDash `renderAttributes` → `escapeHtmlAttr(value)` → `value.replace` → TypeError at render time; EmDash also always emits `key="value"` with no bare-boolean form. Added `normalizeFragmentAttributes`, which still validates names but coerces values to strings: `true` -> present (`""`), `false`/`null`/`undefined` -> omitted, otherwise `String(value)` — mirroring Taki's own `renderAttributes` used by the link/base/inline-style (kind:"html") path. Swapped it in at all four script attribute sites (external-script, inline-script, cloudflare web-analytics/zaraz/turnstile). link/base/inline-style already stringify via Taki and were left unchanged. Added regression test "normalizes boolean and numeric script attributes to strings" (renders through EmDash `renderFragments`, the path that previously crashed). typecheck clean, full suite green (31 tests).
 
 DEVANA-KEY: src/index.ts:1032-1041,923-937 | script-boolean-render-crash
-DEVANA-SUMMARY: open | P1 | high | Boolean script attributes survive collection and crash EmDash renderFragments with TypeError at page render time.
+DEVANA-SUMMARY: fixed | P1 | high | Script-fragment attribute values are now normalized to strings (true->"", false->omitted) before EmDash render, so boolean/numeric attributes no longer crash renderFragments.
