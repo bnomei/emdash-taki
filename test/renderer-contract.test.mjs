@@ -327,6 +327,24 @@ describe("renderer contract", () => {
     );
   });
 
+  test("collapses fragments whose distinct source paths resolve to one assetMap URL", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [deferScript("src/vendor.js"), deferScript("src/app.js")],
+      page,
+      {
+        assetMap: {
+          "src/vendor.js": "/_astro/bundle.js",
+          "src/app.js": "/_astro/bundle.js",
+        },
+      },
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      '<script src="/_astro/bundle.js" defer></script>',
+    );
+  });
+
   test("registers fragment hooks only when dynamic handlers opt into fragments", async () => {
     const metadataOnlyPlugin = createPlugin(
       {

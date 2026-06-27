@@ -1030,14 +1030,15 @@ function collectFragments(
     if (!matchesPage(rule.when, page)) continue;
 
     if (rule.kind === "external-script") {
+      const resolvedSrc = resolveAssetUrl(rule.src, assetMap);
       fragments.push({
         kind: "external-script",
         placement: rule.placement,
-        src: resolveAssetUrl(rule.src, assetMap),
+        src: resolvedSrc,
         async: rule.async,
         defer: rule.defer,
         attributes: validateAttributeNames(rule.attributes),
-        key: fragmentKey(rule, `script:${rule.src}`),
+        key: fragmentKey(rule, `script:${resolvedSrc}`),
       });
     } else if (rule.kind === "inline-script") {
       fragments.push({
@@ -1086,10 +1087,11 @@ function renderLinkFragment(
     title,
     type,
   } = rule;
+  const resolvedHref = resolveAssetUrl(href, assetMap);
   const attrs: TakiAttributes = {
     ...attributes,
     rel,
-    href: resolveAssetUrl(href, assetMap),
+    href: resolvedHref,
     as,
     crossorigin,
     fetchpriority,
@@ -1104,7 +1106,7 @@ function renderLinkFragment(
     kind: "html",
     placement,
     html: renderVoidElement("link", attrs),
-    key: fragmentKey(rule, `link:${rel}:${href}`),
+    key: fragmentKey(rule, `link:${rel}:${resolvedHref}`),
   };
 }
 
@@ -1113,14 +1115,15 @@ function renderBaseFragment(
   assetMap?: TakiAssetMap,
 ): PageFragmentContribution {
   const { href, placement = "head", attributes } = rule;
+  const resolvedHref = resolveAssetUrl(href, assetMap);
   return {
     kind: "html",
     placement,
     html: renderVoidElement("base", {
       ...attributes,
-      href: resolveAssetUrl(href, assetMap),
+      href: resolvedHref,
     }),
-    key: fragmentKey(rule, `base:${href}`),
+    key: fragmentKey(rule, `base:${resolvedHref}`),
   };
 }
 
