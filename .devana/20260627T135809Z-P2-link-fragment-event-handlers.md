@@ -1,5 +1,5 @@
 DEVANA-FINDING: v1
-DEVANA-STATE: open | P2 | high | security=yes
+DEVANA-STATE: fixed | P2 | high | security=yes
 DEVANA-KEY: src/index.ts:1071-1108,910-920 | link-fragment-event-handlers
 
 # Pre-rendered link fragments bypass EmDash event-handler filtering
@@ -49,6 +49,7 @@ After working this report, preserve the original finding body. Update line 2 `DE
 ## Status Notes
 
 - 2026-06-27: open by Devana. Reproduced `onload` preserved in pre-rendered stylesheet fragment HTML.
+- 2026-06-27: fixed. Confirmed link-tag/base/inline-style fragments are pre-rendered to `kind:"html"` via Taki's own `renderAttributes`, which did not filter event-handler attributes, while EmDash strips `on*` (EVENT_HANDLER_RE = /^on/i) from script fragments — so an `onload`/`onclick`/etc. attribute on these typed helpers survived into head HTML that EmDash emits verbatim. Added `EVENT_HANDLER_ATTRIBUTE_RE = /^on/i` (mirroring EmDash) and a filter in Taki `renderAttributes` that drops matching attribute names, giving link/base/inline-style the same handler stripping EmDash applies to scripts. Script fragments remain covered downstream by EmDash's own filter. Values are still HTML-escaped; this closes the permitted-handler-name gap. Added regression test "strips event-handler attributes from rendered link, style, and base fragments". Raw `htmlFragment()` remains a documented trust boundary. typecheck clean, full suite green (37 tests).
 
 DEVANA-KEY: src/index.ts:1071-1108,910-920 | link-fragment-event-handlers
-DEVANA-SUMMARY: open | P2 | high | Link and style fragments pre-render event-handler attributes into html fragments that EmDash emits without the script-path on* filtering.
+DEVANA-SUMMARY: fixed | P2 | high | Taki renderAttributes now strips on* event-handler attributes from link/base/inline-style html fragments, matching EmDash's script-fragment policy.

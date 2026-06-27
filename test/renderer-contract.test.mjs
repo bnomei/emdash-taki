@@ -470,6 +470,26 @@ describe("renderer contract", () => {
     }
   });
 
+  test("strips event-handler attributes from rendered link, style, and base fragments", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [
+        stylesheet("/x.css", { attributes: { onload: "alert(1)", "data-ok": "1" } }),
+        inlineStyle(":root{}", { attributes: { onmouseover: "x()", id: "crit" } }),
+        baseHref("/app/", { attributes: { onclick: "y()" } }),
+      ],
+      page,
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      [
+        '<link data-ok="1" rel="stylesheet" href="/x.css">',
+        '<style id="crit">:root{}</style>',
+        '<base href="/app/">',
+      ].join("\n"),
+    );
+  });
+
   test("keeps base and script fragments with safe URL schemes", async () => {
     const { fragments } = await resolveTakiContributions(
       [

@@ -108,6 +108,10 @@ const HTTP_URL_RE = /^https?:\/\//i;
 const DATA_IMAGE_RE = /^data:image\//i;
 const OTHER_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const DANGEROUS_URL_SCHEME_RE = /^(?:javascript|vbscript|data|file|blob):/i;
+// Mirrors EmDash's EVENT_HANDLER_RE (/^on/i): on* event-handler attributes are
+// stripped from rendered HTML fragments so link/base/inline-style fragments get
+// the same handler filtering EmDash applies to script fragments.
+const EVENT_HANDLER_ATTRIBUTE_RE = /^on/i;
 const FORBIDDEN_HTML_ATTRIBUTE_NAME_CHARS = `"'>/=`;
 
 type ExternalScriptRule = Extract<TakiFragmentRule, { kind: "external-script" }>;
@@ -992,6 +996,7 @@ function renderAttributes(attributes: TakiAttributes | undefined): string {
   if (!attributes) return "";
   validateAttributeNames(attributes);
   return Object.entries(attributes)
+    .filter(([key]) => !EVENT_HANDLER_ATTRIBUTE_RE.test(key))
     .filter(([, value]) => value !== undefined && value !== null && value !== false)
     .map(([key, value]) => {
       const escapedKey = escapeHtmlAttr(key);
