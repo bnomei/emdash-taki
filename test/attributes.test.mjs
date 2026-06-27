@@ -1,3 +1,4 @@
+/** Attribute-name validation and resolver error-path contracts for fragment collection. */
 import assert from "node:assert/strict";
 import test from "node:test";
 import {

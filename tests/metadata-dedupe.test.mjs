@@ -1,3 +1,4 @@
+/** Metadata dedupe keys, including rel-aware link preservation through EmDash render. */
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
@@ -40,8 +41,6 @@ test("non-canonical links with the same href but different rel values are preser
     },
   ]);
 
-  // The rel-aware key must also survive EmDash's rel-blind link dedupe so both
-  // rels render. This is the downstream stage Taki tests previously skipped.
   assert.deepEqual(resolvePageMetadata(result.metadata).links, [
     { rel: "alternate", href: "https://example.com/about" },
     { rel: "author", href: "https://example.com/about" },

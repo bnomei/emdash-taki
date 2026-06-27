@@ -1,3 +1,4 @@
+/** End-to-end plugin, resolver, waterfall, dedupe, and security contracts for Taki. */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
@@ -154,8 +155,6 @@ describe("renderer contract", () => {
       placement: "head",
       src: "/x.js",
       key: "emdash-taki:early:bad",
-      // Boolean attribute reaches EmDash renderAttributes raw (bypassing Taki
-      // collection) and throws there, simulating a render-time failure.
       attributes: { nomodule: true },
     };
     const fragments = [earlyBad];

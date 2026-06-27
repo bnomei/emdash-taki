@@ -1,3 +1,12 @@
+/**
+ * Taki EmDash plugin: declarative head rules, resolver dispatch, and waterfall rendering.
+ *
+ * Static rules and runtime resolvers produce metadata and fragment contributions that
+ * EmDash collects per page. `renderTaki` and `renderTakiStart` assemble the head
+ * waterfall (early resource hints, SEO metadata, late fragments). Typed helpers escape
+ * generated output; `htmlFragment`, `inlineScript`, and `inlineStyle` are trust boundaries.
+ */
+
 import {
   definePlugin,
   type PageFragmentContribution,
@@ -108,9 +117,7 @@ const HTTP_URL_RE = /^https?:\/\//i;
 const DATA_IMAGE_RE = /^data:image\//i;
 const OTHER_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const DANGEROUS_URL_SCHEME_RE = /^(?:javascript|vbscript|data|file|blob):/i;
-// Mirrors EmDash's EVENT_HANDLER_RE (/^on/i): on* event-handler attributes are
-// stripped from rendered HTML fragments so link/base/inline-style fragments get
-// the same handler filtering EmDash applies to script fragments.
+// Match EmDash script policy: strip on* handlers from pre-rendered HTML fragments.
 const EVENT_HANDLER_ATTRIBUTE_RE = /^on/i;
 const FORBIDDEN_HTML_ATTRIBUTE_NAME_CHARS = `"'>/=`;
 
@@ -133,6 +140,7 @@ type ScriptHelperOptions = Omit<
   placement?: TakiPlacement;
 };
 
+/** EmDash plugin descriptor: static rules, optional runtime entry, and fragment hook capabilities. */
 export function takiPlugin(
   options: TakiDescriptorOptions = {},
 ): PluginDescriptor<TakiCreatePluginOptions> {
@@ -153,6 +161,7 @@ export function takiPlugin(
   };
 }
 
+/** Plugin factory that resolves Taki contributions per page and registers EmDash metadata/fragment hooks. */
 export function createPlugin(
   options: TakiCreatePluginOptions = {},
   runtimeInput: TakiRuntimeInput = {},
@@ -180,10 +189,7 @@ export function createPlugin(
       resolvers: runtimeOptions.resolvers,
       templates: runtimeOptions.templates,
     });
-    // Cache in-flight and fulfilled results, but evict on rejection so a later
-    // hook call for the same page object can retry a transient or corrected
-    // failure instead of replaying the pinned rejection. The returned promise
-    // still rejects to the caller; only the cache entry is cleared.
+    // Evict rejected cache entries so the same page object can retry; callers still receive the rejection.
     promise.catch(() => {
       if (pageCache.get(page) === promise) pageCache.delete(page);
     });
@@ -213,12 +219,14 @@ export function createPlugin(
   });
 }
 
+/** Curries runtime resolvers/templates for the Astro `runtime` entry module. */
 export function defineTakiRuntime(runtimeInput: TakiRuntimeInput = {}) {
   const runtimeOptions = normalizeRuntimeInput(runtimeInput);
 
   return (options: TakiCreatePluginOptions = {}) => createPlugin(options, runtimeOptions);
 }
 
+/** Static `<meta name>` rule for EmDash metadata collection. */
 export function meta(
   name: string,
   content: string,
@@ -227,6 +235,7 @@ export function meta(
   return { kind: "meta", name, content, ...options };
 }
 
+/** Static Open Graph or other `<meta property>` rule. */
 export function property(
   propertyName: string,
   content: string,
@@ -235,6 +244,7 @@ export function property(
   return { kind: "property", property: propertyName, content, ...options };
 }
 
+/** Static metadata `<link rel>` rule; href safety is enforced downstream by EmDash. */
 export function link(
   rel: TakiMetadataLinkRel,
   href: string,
@@ -243,6 +253,7 @@ export function link(
   return { kind: "link", rel, href, ...options };
 }
 
+/** JSON-LD graph contribution keyed by `id` for last-wins dedupe. */
 export function jsonLd(
   id: string,
   graph: Record<string, unknown> | Array<Record<string, unknown>>,
@@ -251,6 +262,7 @@ export function jsonLd(
   return { kind: "jsonld", id, graph, ...options };
 }
 
+/** EmDash site-standard-document metadata bridge rule. */
 export function siteStandardDocument(
   href: string,
   options: Omit<TakiEmDashRule & { kind: "emdash:site-standard-document" }, "kind" | "href"> = {},
@@ -258,6 +270,7 @@ export function siteStandardDocument(
   return { kind: "emdash:site-standard-document", href, ...options };
 }
 
+/** EmDash NLWeb metadata bridge rule. */
 export function nlweb(
   href: string,
   options: Omit<TakiEmDashRule & { kind: "emdash:nlweb" }, "kind" | "href"> = {},
@@ -265,6 +278,7 @@ export function nlweb(
   return { kind: "emdash:nlweb", href, ...options };
 }
 
+/** External script fragment collected by the page-fragments hook. */
 export function externalScript(
   src: string,
   options: ExternalScriptHelperOptions = {},
@@ -273,6 +287,7 @@ export function externalScript(
   return { kind: "external-script", placement, src, ...rest };
 }
 
+/** Early-phase external script with `async` enabled. */
 export function asyncScript(src: string, options: ScriptHelperOptions = {}): TakiFragmentRule {
   return {
     kind: "external-script",
@@ -284,6 +299,7 @@ export function asyncScript(src: string, options: ScriptHelperOptions = {}): Tak
   };
 }
 
+/** Early-phase external script without async/defer. */
 export function blockingScript(src: string, options: ScriptHelperOptions = {}): TakiFragmentRule {
   return {
     kind: "external-script",
@@ -294,6 +310,7 @@ export function blockingScript(src: string, options: ScriptHelperOptions = {}): 
   };
 }
 
+/** Early-phase external script with `defer` enabled. */
 export function deferScript(src: string, options: ScriptHelperOptions = {}): TakiFragmentRule {
   return {
     kind: "external-script",
@@ -305,6 +322,7 @@ export function deferScript(src: string, options: ScriptHelperOptions = {}): Tak
   };
 }
 
+/** Inline script fragment; caller must supply trusted code (see SECURITY.md). */
 export function inlineScript(
   code: string,
   options: InlineScriptHelperOptions = {},
@@ -313,6 +331,7 @@ export function inlineScript(
   return { kind: "inline-script", placement, code, ...rest };
 }
 
+/** Raw HTML fragment; caller must supply trusted markup (see SECURITY.md). */
 export function htmlFragment(
   html: string,
   options: HtmlFragmentHelperOptions = {},
@@ -321,10 +340,12 @@ export function htmlFragment(
   return { kind: "html", placement, html, ...rest };
 }
 
+/** Early `<base href>` waterfall fragment with URL scheme filtering at collection. */
 export function baseHref(href: string, options: TakiHtmlHelperOptions = {}): TakiBaseHrefRule {
   return { kind: "base", phase: "early", href, ...options };
 }
 
+/** Static metadata `<link rel>` rule; href safety is enforced downstream by EmDash. */
 export function linkTag(
   rel: string,
   href: string,
@@ -333,18 +354,22 @@ export function linkTag(
   return htmlLink(rel, href, options);
 }
 
+/** Early `rel=preconnect` resource hint. */
 export function preconnect(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("preconnect", href, { phase: "early", ...options });
 }
 
+/** Early `rel=dns-prefetch` resource hint. */
 export function dnsPrefetch(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("dns-prefetch", href, { phase: "early", ...options });
 }
 
+/** Early `rel=stylesheet` link rendered in the waterfall. */
 export function stylesheet(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("stylesheet", href, { phase: "early", ...options });
 }
 
+/** Early `rel=preload` hint with required `as` attribute. */
 export function preload(
   href: string,
   as: string,
@@ -353,22 +378,27 @@ export function preload(
   return htmlLink("preload", href, { phase: "early", ...options, as });
 }
 
+/** Early `rel=prefetch` resource hint. */
 export function prefetch(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("prefetch", href, { phase: "early", ...options });
 }
 
+/** Early `rel=prerender` resource hint. */
 export function prerender(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("prerender", href, { phase: "early", ...options });
 }
 
+/** Favicon or touch icon link rule. */
 export function icon(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("icon", href, options);
 }
 
+/** Web app manifest link rule. */
 export function manifest(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("manifest", href, options);
 }
 
+/** RSS/Atom `rel=alternate` feed link with default RSS type/title. */
 export function feed(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("alternate", href, {
     type: "application/rss+xml",
@@ -377,10 +407,12 @@ export function feed(href: string, options: TakiLinkTagOptions = {}): TakiLinkTa
   });
 }
 
+/** Early inline `<style>` fragment; caller must supply trusted CSS (see SECURITY.md). */
 export function inlineStyle(css: string, options: TakiHtmlHelperOptions = {}): TakiInlineStyleRule {
   return { kind: "inline-style", phase: "early", css, ...options };
 }
 
+/** Cloudflare Web Analytics beacon script fragment. */
 export function cloudflareWebAnalytics(
   token: string,
   options: Omit<CloudflareWebAnalyticsRule, "kind" | "token"> = {},
@@ -388,18 +420,21 @@ export function cloudflareWebAnalytics(
   return { kind: "cloudflare:web-analytics", token, ...options };
 }
 
+/** Cloudflare Zaraz loader script fragment. */
 export function cloudflareZaraz(
   options: Omit<CloudflareZarazRule, "kind"> = {},
 ): CloudflareZarazRule {
   return { kind: "cloudflare:zaraz", ...options };
 }
 
+/** Cloudflare Turnstile challenge script and optional preconnect. */
 export function cloudflareTurnstile(
   options: Omit<CloudflareTurnstileRule, "kind"> = {},
 ): CloudflareTurnstileRule {
   return { kind: "cloudflare:turnstile", ...options };
 }
 
+/** Per-template resolver rule; defaults `when` to matching `pageType`. */
 export function template(
   name: string,
   options: TakiTemplatesOptions = {},
@@ -411,6 +446,7 @@ export function template(
   });
 }
 
+/** Per-template resolver rule; defaults `when` to matching `pageType`. */
 export function templates(options: TakiTemplatesOptions = {}): TakiResolverRule<TakiTemplateInput> {
   return {
     kind: "resolve",
@@ -424,15 +460,18 @@ type ResolverRuleOptions<TInput extends TakiJsonValue = TakiJsonValue> = Omit<
   "kind" | "resolver"
 >;
 
+/** Named resolver rule. Does not suppress automatic template registration when `runtime` is set. */
 export function resolve<TInput extends TakiJsonValue = TakiJsonValue>(
   options?: ResolverRuleOptions<TInput>,
 ): TakiResolverRule<TInput>;
 
+/** Named resolver rule. Does not suppress automatic template registration when `runtime` is set. */
 export function resolve<TInput extends TakiJsonValue = TakiJsonValue>(
   resolver: string,
   options?: ResolverRuleOptions<TInput>,
 ): TakiResolverRule<TInput>;
 
+/** Named resolver rule. Does not suppress automatic template registration when `runtime` is set. */
 export function resolve<TInput extends TakiJsonValue = TakiJsonValue>(
   resolverOrOptions?: string | ResolverRuleOptions<TInput>,
   options: ResolverRuleOptions<TInput> = {},
@@ -448,6 +487,7 @@ export function resolve<TInput extends TakiJsonValue = TakiJsonValue>(
   };
 }
 
+/** Resolve, collect, and dedupe Taki metadata and fragments for one page context. */
 export async function resolveTakiContributions(
   rules: TakiRule[],
   page: TakiPageContext,
@@ -455,19 +495,16 @@ export async function resolveTakiContributions(
 ) {
   const resolved = await resolveRules(rules, page, options);
 
-  // Only collect fragments when fragments are actually in use. Otherwise no
-  // page:fragments hook is registered (see fragmentCapabilities/usesFragments)
-  // and any fragments a resolver returns can never be published — so collecting
-  // them is wasted work, and worse, a malformed fragment would abort the shared
-  // metadata collection and drop otherwise-valid metadata for the page.
   return {
     metadata: dedupeMetadataLastWins(collectMetadata(resolved.rules, page, resolved.assetMap)),
+    // Skip fragment collection when no page-fragments hook is registered.
     fragments: usesFragments(rules)
       ? dedupeFragmentsLastWins(collectFragments(resolved.rules, page, resolved.assetMap))
       : [],
   };
 }
 
+/** True when a head fragment uses the reserved early waterfall key prefix. */
 export function isEarlyTakiFragment(contribution: PageFragmentContribution): boolean {
   return (
     contribution.placement === "head" &&
@@ -476,6 +513,7 @@ export function isEarlyTakiFragment(contribution: PageFragmentContribution): boo
   );
 }
 
+/** Render early waterfall fragments via the page runtime, then strip them from the shared cache. */
 export async function renderTakiStart(
   page: TakiPageContext,
   locals: Record<string, unknown>,
@@ -487,16 +525,14 @@ export async function renderTakiStart(
   const fragments = await runtime.collectPageFragments(page);
   const earlyFragments = pageApi.resolveFragments(fragments.filter(isEarlyTakiFragment), "head");
 
-  // Render before mutating the shared EmDash fragment cache. If rendering
-  // throws, the early fragments stay in the cache so a later EmDashHead/
-  // renderTaki call still emits them, rather than leaving the request
-  // permanently missing those resources with no rollback.
+  // Render before stripping the shared cache so a render failure leaves early fragments recoverable.
   const html = pageApi.renderFragments(earlyFragments, "head");
   removeEarlyTakiFragments(fragments);
 
   return html;
 }
 
+/** Assemble the full head waterfall: basics, early fragments, metadata, site identity, late fragments. */
 export async function renderTaki(
   page: TakiPageContext,
   locals: Record<string, unknown>,
@@ -566,11 +602,6 @@ function createRules(options: TakiDescriptorOptions): TakiRule[] {
     return rules;
   }
 
-  // Auto-registration was suppressed because explicit template() rules already
-  // exist. Plugin-level templates options (e.g. { fragments: true }) must still
-  // apply to those rules — otherwise the plugin-wide opt-in is silently dropped
-  // and the fragment hook never registers. Merge them as defaults so each
-  // rule's own explicitly-set options still win.
   if (options.runtime && options.templates !== false && Object.keys(templateOptions).length > 0) {
     return rules.map((rule) =>
       isTemplateResolverRule(rule) ? ({ ...templateOptions, ...rule } as TakiRule) : rule,
@@ -593,10 +624,7 @@ function normalizeRuntimeInput(runtimeInput: TakiRuntimeInput): TakiRuntimeOptio
 
   if (isRuntimeConfig(runtimeInput)) {
     const { resolve, resolvers, templates, ...rest } = runtimeInput;
-    // A shorthand template map can legitimately contain a key named
-    // resolve/resolvers/templates. Treat the reserved keys as config and
-    // fold any remaining top-level entries back in as shorthand template
-    // modules rather than silently dropping them.
+    // Shorthand template-map keys named resolve/resolvers/templates fold back as template modules.
     const merged = {
       ...normalizeTemplateModules(rest as TakiTemplateModuleMap),
       ...(templates ? normalizeTemplateModules(templates) : {}),
@@ -685,16 +713,9 @@ async function resolveRules(
   page: TakiPageContext,
   options: TakiResolveOptions,
 ): Promise<{ assetMap?: TakiAssetMap; rules: TakiStaticRule[] }> {
-  // Preflight: reject invalid static fragment attribute names before any
-  // resolver runs, so a configuration mistake in a static rule cannot trigger
-  // resolver side effects (network reads/writes) on a page that can never
-  // produce valid head output. Only validates rules that match the page, since
-  // non-matching rules are skipped during collection and never throw.
+  // Reject invalid static fragment attributes before any resolver side effects run.
   validateStaticFragmentAttributes(rules, page);
 
-  // Fragments are only collected (and thus validated) when they are in use; see
-  // resolveTakiContributions. Mirror that here so resolver-returned fragment
-  // validation does not drop a metadata-only resolver's output.
   const collectsFragments = usesFragments(rules);
   const resolvedRules: TakiStaticRule[] = [];
   let assetMap = options.assetMap ? { ...options.assetMap } : undefined;
@@ -734,13 +755,7 @@ async function resolveRules(
         rule,
       });
       const normalized = normalizeResolverResult(result);
-      // Validate the resolver's fragment output here, inside this rule's
-      // try/catch, so a malformed attribute is governed by the rule's onError
-      // (ignore -> drop this resolver's contribution and warn; throw -> fail)
-      // instead of throwing later in collectFragments outside any onError
-      // handling. Validate before merging so a failing resolver contributes
-      // nothing, consistent with how a resolver throw is treated. Skip when
-      // fragments are not in use, since they are never collected or published.
+      // Honor resolver onError by validating fragment output inside this try/catch.
       if (collectsFragments) validateStaticFragmentAttributes(normalized.rules, page);
       resolvedRules.push(...normalized.rules);
       if (normalized.assetMap) {
@@ -812,11 +827,8 @@ function normalizeResolverResult(result: TakiResolverResult): {
   const rules: TakiStaticRule[] = [];
   let nestedResolverCount = 0;
   for (const entry of flat) {
-    if (!isRecord(entry)) continue; // drop null / non-object entries
+    if (!isRecord(entry)) continue;
     if (isResolverRule(entry)) {
-      // Resolver-returned `kind: "resolve"` rules are not executed (resolveRules
-      // is a single pass). Count them so the caller can surface the drop instead
-      // of discarding nested resolvers silently.
       nestedResolverCount += 1;
       continue;
     }
@@ -841,13 +853,11 @@ function handleResolverError(
 
   const message = `Taki resolver "${rule.resolver}" failed`;
   const detail = { error: error instanceof Error ? error.message : String(error) };
-  // Fall back to console.warn when no plugin ctx is available (e.g. a direct
-  // resolveTakiContributions call without ctx) so the diagnostic is not
-  // silently swallowed by an undefined ctx.log.warn.
   const warn = options.ctx?.log?.warn;
   if (warn) {
     warn(message, detail);
   } else {
+    // Direct resolveTakiContributions calls may omit ctx; still surface the warning.
     console.warn(message, detail);
   }
 }
@@ -955,8 +965,6 @@ function dedupeLastWins<T>(items: T[], keyFor: (item: T) => string | undefined):
 }
 
 function metadataDedupeKey(contribution: PageMetadataContribution): string | undefined {
-  // Treat an explicit empty-string key as absent so it falls back to the
-  // per-field identity instead of collapsing every "" rule into one bucket.
   const key = "key" in contribution && contribution.key ? contribution.key : undefined;
 
   if (contribution.kind === "meta") {
@@ -1003,20 +1011,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-// Treat an explicit empty-string key as absent. Carrying key: "" on a
-// contribution would collapse unrelated meta/property/link rules into one
-// dedupe bucket both here and in EmDash's own resolvePageMetadata (which keys
-// on `key ?? name`), so normalize it away at the source.
 function emptyToUndefined(value: string | undefined): string | undefined {
   return value ? value : undefined;
 }
 
-// EmDash's resolvePageMetadata dedupes non-canonical links by
-// `key ?? hreflang ?? href` with no `rel`, so two links sharing an href but
-// differing in rel (e.g. alternate + author) would collapse at render even
-// though Taki keeps both. Emit a rel-aware dedupe key so EmDash matches Taki's
-// documented "rel plus key|hreflang|href" contract. Canonical is special-cased
-// by both layers (single "canonical" bucket) and needs no synthetic key.
 function linkContributionKey(
   rel: string,
   explicitKey: string | undefined,
@@ -1073,12 +1071,6 @@ function validateAttributeNames<T extends TakiAttributes | Record<string, string
   return attributes;
 }
 
-// EmDash renders script-fragment attributes itself via escapeHtmlAttr(value),
-// which calls value.replace(...) and so crashes on non-string values, and it
-// always emits key="value" (no bare-boolean form). Normalize values to strings
-// here so a boolean/number attribute (e.g. { nomodule: true }) from an untyped
-// caller or resolver does not crash page rendering: true -> present ("") and
-// false/null/undefined -> omitted, mirroring Taki's own renderAttributes.
 function normalizeFragmentAttributes(
   attributes: TakiAttributes | Record<string, string> | undefined,
 ): Record<string, string> | undefined {
@@ -1094,11 +1086,7 @@ function normalizeFragmentAttributes(
 }
 
 function isSafeFragmentUrl(value: string): boolean {
-  // Browsers ignore leading and embedded ASCII whitespace/control characters
-  // when resolving a URL's scheme (e.g. "java\tscript:"), so strip them before
-  // matching. Relative URLs and query/anchor fragments are allowed, but
-  // protocol-relative ("//host") URLs are rejected for typed fragment helpers
-  // because they can silently load same-scheme third-party resources.
+  // Strip ASCII whitespace/control chars before scheme checks (browser URL parsing quirk).
   const normalized = value.replace(/[\u0000-\u0020]/g, "");
   return !normalized.startsWith("//") && !DANGEROUS_URL_SCHEME_RE.test(normalized);
 }
@@ -1245,9 +1233,6 @@ function collectFragments(
         async: rule.async,
         defer: rule.defer,
         attributes,
-        // Fold async/defer/attributes into the fallback key so two scripts with
-        // the same src but different rendered output (e.g. nonce, type=module,
-        // async vs defer) are not collapsed by last-wins dedupe.
         key: fragmentKey(rule, externalScriptDedupeKey(resolvedSrc, rule.async, rule.defer, attributes)),
       });
     } else if (rule.kind === "inline-script") {
@@ -1324,11 +1309,6 @@ function renderLinkFragment(
     type,
   };
 
-  // Derive the fallback dedupe key from the fully rendered tag so two links
-  // that share rel+href but differ in rendered attributes (sizes, media, type,
-  // as, crossorigin, ...) keep distinct keys instead of collapsing under
-  // last-wins. Identical output (including assetMap-aliased hrefs) still
-  // collapses.
   const html = renderVoidElement("link", attrs);
   return {
     kind: "html",
@@ -1362,8 +1342,6 @@ function renderBaseFragment(
 
 function renderInlineStyleFragment(rule: TakiInlineStyleRule): PageFragmentContribution {
   const { css, placement = "head", attributes } = rule;
-  // Key off the rendered tag (css + attributes) so two inline styles with the
-  // same css but different media/attributes are not collapsed.
   const html = renderElement("style", attributes, escapeStyleText(css));
   return {
     kind: "html",
@@ -1470,18 +1448,11 @@ function isTemplateResolverRule(rule: TakiRule): boolean {
 }
 
 function isStaticRule(rule: TakiRule): rule is TakiStaticRule {
-  // Guard against null / non-object entries a resolver may include in its
-  // return array (e.g. a missed filter(Boolean)). Without this, reading
-  // rule.kind throws while filtering and drops every co-returned rule.
   return isRecord(rule) && !isResolverRule(rule);
 }
 
 function fragmentKey(rule: { key?: string; phase?: TakiRenderPhase }, fallback: string): string {
-  // The early prefix is the internal marker that classifies a fragment as part
-  // of the early head waterfall (isEarlyTakiFragment) and opts it into
-  // removeEarlyTakiFragments. It is reserved: a caller key carrying it would be
-  // misclassified as early without phase: "early", so reject it and point
-  // authors at the supported opt-in.
+  // Reserve the early prefix for phase:"early" fragments only.
   if (rule.key !== undefined && rule.key.startsWith(EARLY_TAKI_FRAGMENT_KEY_PREFIX)) {
     throw new Error(
       `Fragment key "${rule.key}" must not start with the reserved "${EARLY_TAKI_FRAGMENT_KEY_PREFIX}" prefix. Use { phase: "early" } to mark a fragment as early.`,
@@ -1516,9 +1487,7 @@ function hashString(value: string): string {
 function resolveAssetUrl(value: string, assetMap: TakiAssetMap | undefined): string {
   if (!assetMap) return value;
 
-  // Presence of the key — not truthiness of its value — is the oracle for an
-  // exact hit, so a key mapped to "" still takes precedence over the fuzzy
-  // candidate variants below and over the raw input.
+  // Exact key presence wins over value truthiness, so "" mappings are intentional.
   if (Object.prototype.hasOwnProperty.call(assetMap, value)) return assetMap[value];
 
   if (/^[a-z][a-z\d+.-]*:/i.test(value) || value.startsWith("//") || value.startsWith("#")) {
@@ -1529,9 +1498,6 @@ function resolveAssetUrl(value: string, assetMap: TakiAssetMap | undefined): str
   candidates.add(value.replace(/^\/+/, ""));
   if (value.startsWith("./")) candidates.add(value.slice(2));
   if (!value.startsWith("/")) candidates.add(`/${value}`);
-  // Canonicalize a leading "./" or "/" to the bare and slash-prefixed forms so
-  // equivalent spellings (./scripts/app.js, scripts/app.js, /scripts/app.js)
-  // all reach the same assetMap key regardless of how the key is spelled.
   const bare = value.replace(/^\.?\/+/, "");
   candidates.add(bare);
   candidates.add(`/${bare}`);
@@ -1594,10 +1560,7 @@ function matchesPage(
 }
 
 function matchesSinglePage(matcher: TakiMatcher, page: TakiPageContext): boolean {
-  // A null / non-object entry in a when array (e.g. a buggy
-  // [cond && {...}].filter(Boolean) or JSON with holes) is treated as a
-  // non-match rather than crashing on matcher.kind, so sibling matchers in the
-  // array still evaluate.
+  // Null holes in when arrays are non-matches, not hook failures.
   if (!isRecord(matcher)) return false;
   if (matcher.kind !== undefined && !matchesOneOrMany(matcher.kind, page.kind)) return false;
   if (matcher.pageType !== undefined && !matchesOneOrMany(matcher.pageType, page.pageType))
