@@ -1,6 +1,6 @@
 {
   "name": "@bnomei/emdash-taki",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Taki waterfall renderer and dynamic head helpers for EmDash, Astro, and Cloudflare sites.",
   "keywords": [
     "asset-map",
