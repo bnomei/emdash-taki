@@ -604,11 +604,30 @@ function createRules(options: TakiDescriptorOptions): TakiRule[] {
 
   if (options.runtime && options.templates !== false && Object.keys(templateOptions).length > 0) {
     return rules.map((rule) =>
-      isTemplateResolverRule(rule) ? ({ ...templateOptions, ...rule } as TakiRule) : rule,
+      isTemplateResolverRule(rule) ? mergeTemplateRuleOptions(templateOptions, rule) : rule,
     );
   }
 
   return rules;
+}
+
+function mergeTemplateRuleOptions(
+  templateOptions: Record<string, unknown>,
+  rule: TakiResolverRule,
+): TakiRule {
+  const merged = {
+    ...templateOptions,
+    ...rule,
+  };
+
+  if (isRecord(templateOptions.input) || isRecord(rule.input)) {
+    merged.input = {
+      ...(isRecord(templateOptions.input) ? templateOptions.input : {}),
+      ...(isRecord(rule.input) ? rule.input : {}),
+    };
+  }
+
+  return merged as TakiRule;
 }
 
 function shouldAutoRegisterTemplates(options: TakiDescriptorOptions, rules: TakiRule[]): boolean {
@@ -1233,7 +1252,10 @@ function collectFragments(
         async: rule.async,
         defer: rule.defer,
         attributes,
-        key: fragmentKey(rule, externalScriptDedupeKey(resolvedSrc, rule.async, rule.defer, attributes)),
+        key: fragmentKey(
+          rule,
+          externalScriptDedupeKey(resolvedSrc, rule.async, rule.defer, attributes),
+        ),
       });
     } else if (rule.kind === "inline-script") {
       fragments.push({
@@ -1443,7 +1465,7 @@ function isResolverRule(rule: TakiRule): rule is TakiResolverRule {
   return rule.kind === "resolve";
 }
 
-function isTemplateResolverRule(rule: TakiRule): boolean {
+function isTemplateResolverRule(rule: TakiRule): rule is TakiResolverRule<TakiTemplateInput> {
   return isResolverRule(rule) && rule.resolver === TEMPLATE_RESOLVER;
 }
 

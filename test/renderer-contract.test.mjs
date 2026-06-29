@@ -559,19 +559,13 @@ describe("renderer contract", () => {
 
   test("keeps base and script fragments with safe URL schemes", async () => {
     const { fragments } = await resolveTakiContributions(
-      [
-        baseHref("/app/"),
-        externalScript("https://cdn.example/app.js"),
-      ],
+      [baseHref("/app/"), externalScript("https://cdn.example/app.js")],
       page,
     );
 
     assert.equal(
       renderFragments(fragments, "head"),
-      [
-        '<base href="/app/">',
-        '<script src="https://cdn.example/app.js"></script>',
-      ].join("\n"),
+      ['<base href="/app/">', '<script src="https://cdn.example/app.js"></script>'].join("\n"),
     );
   });
 
@@ -709,12 +703,13 @@ describe("renderer contract", () => {
   test("merges plugin templates options into explicit template rules", async () => {
     const descriptor = takiPlugin({
       runtime: "./src/emdash-taki-runtime.ts",
-      templates: { fragments: true },
-      rules: [template("article")],
+      templates: { fragments: true, input: { section: "docs", locale: "global" } },
+      rules: [template("article", { input: { locale: "en" } })],
     });
 
     const templateRule = descriptor.options.rules.find((rule) => rule.kind === "resolve");
     assert.equal(templateRule.fragments, true);
+    assert.deepEqual(templateRule.input, { section: "docs", locale: "en", template: "article" });
     assert.deepEqual(templateRule.when, { pageType: "article" });
     assert.ok(descriptor.capabilities.includes("hooks.page-fragments:register"));
   });
