@@ -1,3 +1,4 @@
+/** Typed-helper escaping versus raw htmlFragment/inlineScript/inlineStyle trust boundaries. */
 import assert from "node:assert/strict";
 import test from "node:test";
 

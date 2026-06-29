@@ -230,6 +230,11 @@ This cache is intentionally per plugin instance and per page object identity:
 - Resolver output should therefore depend on the supplied `page`, runtime
   options, and stable request context. Do not rely on resolver side effects
   running separately for metadata and fragments on the same page object.
+- Treat the `page` object as immutable for the duration of a request. Because
+  the cache is keyed by object identity, mutating `page` fields (for example
+  `page.title`) after the first hook call does **not** re-run resolvers; the
+  first resolution is reused. If contributions must change, pass a new page
+  context object instead of mutating the existing one.
 - Because the cache uses `WeakMap`, entries can be garbage-collected after the
   page object is no longer referenced by the host runtime.
 
@@ -591,6 +596,15 @@ removes early fragments from EmDash's cached fragment list after rendering them,
 so stock `EmDashHead` still renders metadata, site identity, and late fragments
 without duplicating early resources.
 
+`renderTakiStart()` only emits early page fragments, which it reads from the
+EmDash page runtime in `locals`. When `locals` carries no runtime (for example a
+partially initialized `Astro.locals`), or when there are no early fragments, it
+returns an empty string. Unlike `renderTaki()` — which renders `basics` and
+fallback SEO metadata from the `page` context even without a runtime — there is
+no standalone fallback here, because early resource hints are defined by the
+runtime. If you see no early output, verify that EmDash populated the page
+runtime on `locals`.
+
 ### `renderTaki(page, locals, options)`
 
 Returns the full `<head>` contribution HTML that replaces EmDash's stock
@@ -667,6 +681,15 @@ Use this for non-template dynamic cases where the value cannot be expressed as
 static JSON in `astro.config.mjs`, but can be computed from `event.page`,
 `ctx.content`, `ctx.media`, `ctx.kv`, or another server-side EmDash context API.
 The resolver input must be serializable.
+
+A `resolve()` rule does **not** suppress automatic template dispatch: with
+`takiPlugin({ runtime })`, the automatic `templates()` rule is still added unless
+`templates: false` is set or an explicit template rule exists. This is
+intentional — the default resolver and the template dispatcher are independent,
+and their contributions merge with last-wins dedupe, so you can combine custom
+`resolve()` logic with per-`pageType` template files. If you want a `resolve()`
+rule to fully replace automatic templates, set `templates: false` and add the
+template dispatch explicitly where you need it.
 
 Options:
 

@@ -1,3 +1,4 @@
+/** End-to-end plugin, resolver, waterfall, dedupe, and security contracts for Taki. */
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
@@ -16,6 +17,7 @@ import {
   isEarlyTakiFragment,
   jsonLd,
   link,
+  linkTag,
   manifest,
   meta,
   preconnect,
@@ -29,6 +31,8 @@ import {
   resolveTakiContributions,
   siteStandardDocument,
   stylesheet,
+  takiPlugin,
+  template,
   templates,
 } from "../dist/index.mjs";
 import {
@@ -138,14 +142,31 @@ describe("renderer contract", () => {
     };
 
     assert.equal(await renderTakiStart(page, locals), '<link rel="stylesheet" href="/early.css">');
-    assert.deepEqual(fragments, [
-      {
-        kind: "html",
-        placement: "head",
-        html: '<link rel="icon" href="/favicon.svg" type="image/svg+xml">',
-        key: "link:icon:/favicon.svg",
+    assert.equal(fragments.length, 1);
+    assert.equal(fragments[0].kind, "html");
+    assert.equal(fragments[0].placement, "head");
+    assert.equal(fragments[0].html, '<link rel="icon" href="/favicon.svg" type="image/svg+xml">');
+    assert.equal(typeof fragments[0].key, "string");
+  });
+
+  test("renderTakiStart leaves the fragment cache intact when rendering throws", async () => {
+    const earlyBad = {
+      kind: "external-script",
+      placement: "head",
+      src: "/x.js",
+      key: "emdash-taki:early:bad",
+      attributes: { nomodule: true },
+    };
+    const fragments = [earlyBad];
+    const locals = {
+      emdash: {
+        collectPageMetadata: async () => [],
+        collectPageFragments: async () => fragments,
       },
-    ]);
+    };
+
+    await assert.rejects(() => renderTakiStart(page, locals));
+    assert.deepEqual(fragments, [earlyBad]);
   });
 
   test("renderTaki renders basics before fallback metadata when no runtime is available", async () => {
@@ -175,6 +196,21 @@ describe("renderer contract", () => {
         '<script type="application/ld+json">{"@context":"https://schema.org","@type":"BlogPosting","headline":"Guide Page","description":"Default guide description","url":"https://example.test/docs/guide","mainEntityOfPage":{"@type":"WebPage","@id":"https://example.test/docs/guide"}}</script>',
       ].join("\n"),
     );
+  });
+
+  test("renderTaki honours charset:true and viewport:true without basics", async () => {
+    const html = await renderTaki(
+      { ...page, title: "Example" },
+      {},
+      { charset: true, viewport: true, title: true },
+    );
+    const lines = html.split("\n");
+
+    assert.deepEqual(lines.slice(0, 3), [
+      '<meta charset="utf-8">',
+      '<meta name="viewport" content="width=device-width">',
+      "<title>Example</title>",
+    ]);
   });
 
   test("renderTaki orders runtime output from basics through late fragments", async () => {
@@ -325,6 +361,432 @@ describe("renderer contract", () => {
         '<link rel="stylesheet" href="/_astro/theme.final.css">',
       ].join("\n"),
     );
+  });
+
+  test("keeps shorthand template entries that coexist with a reserved runtime key", async () => {
+    const plugin = createPlugin(
+      { rules: [templates()] },
+      {
+        article: () => [meta("description", "article template")],
+        product: () => [meta("description", "product template")],
+        resolve: () => [meta("description", "default resolver")],
+      },
+    );
+
+    const contributions = await plugin.hooks["page:metadata"].handler({ page }, ctx);
+    assert.deepEqual(resolvePageMetadata(contributions), {
+      meta: [{ name: "description", content: "article template" }],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+  });
+
+  test("rejects fragment keys that use the reserved early prefix", async () => {
+    await assert.rejects(
+      () =>
+        resolveTakiContributions(
+          [externalScript("/v.js", { key: "emdash-taki:early:vendor" })],
+          page,
+        ),
+      /reserved "emdash-taki:early:" prefix/,
+    );
+  });
+
+  test("treats an explicit empty-string metadata key as absent for dedupe", async () => {
+    const { metadata } = await resolveTakiContributions(
+      [
+        meta("description", "first", { key: "" }),
+        meta("keywords", "second", { key: "" }),
+        property("og:title", "third", { key: "" }),
+      ],
+      page,
+    );
+
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [
+        { name: "description", content: "first" },
+        { name: "keywords", content: "second" },
+      ],
+      properties: [{ property: "og:title", content: "third" }],
+      links: [],
+      jsonld: [],
+    });
+  });
+
+  test("ignores null entries in when matcher arrays instead of crashing", async () => {
+    const { metadata } = await resolveTakiContributions(
+      [
+        meta("x", "y", { when: [null] }),
+        meta("kept", "yes", { when: [null, { pageType: "article" }] }),
+      ],
+      page,
+    );
+
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [{ name: "kept", content: "yes" }],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+  });
+
+  test("pathPrefix matcher skips rules instead of crashing when page.path is absent", async () => {
+    const pathlessPage = { kind: "content", pageType: "page" };
+    const { metadata } = await resolveTakiContributions(
+      [
+        meta("robots", "noindex", { when: { pathPrefix: "/preview" } }),
+        meta("description", "always"),
+      ],
+      pathlessPage,
+    );
+
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [{ name: "description", content: "always" }],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+  });
+
+  test("resolves dot-relative paths against slash-prefixed assetMap keys", async () => {
+    const assetMap = { "/scripts/app.js": "/_astro/app.hash.js" };
+    for (const spelling of ["./scripts/app.js", "scripts/app.js", "/scripts/app.js"]) {
+      const { fragments } = await resolveTakiContributions([deferScript(spelling)], page, {
+        assetMap,
+      });
+      assert.equal(
+        renderFragments(fragments, "head"),
+        '<script src="/_astro/app.hash.js" defer></script>',
+        `spelling ${spelling} should resolve to the hashed URL`,
+      );
+    }
+  });
+
+  test("normalizes boolean and numeric script attributes to strings", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [
+        externalScript("/a.js", { attributes: { nomodule: true, hidden: false, "data-n": 3 } }),
+        inlineScript("ready()", { attributes: { defer: true } }),
+      ],
+      page,
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      [
+        '<script src="/a.js" nomodule="" data-n="3"></script>',
+        '<script defer="">ready()</script>',
+      ].join("\n"),
+    );
+  });
+
+  test("drops base and script fragments with unsafe URLs", async () => {
+    const original = console.warn;
+    console.warn = () => {};
+    try {
+      const dangerous = [
+        baseHref("javascript:alert(1)"),
+        baseHref("  javascript:alert(1)"),
+        baseHref("java\tscript:alert(1)"),
+        baseHref("//evil.example/"),
+        externalScript("javascript:alert(1)"),
+        externalScript("data:text/javascript,alert(1)"),
+        externalScript("//evil.example/x.js"),
+      ];
+      for (const rule of dangerous) {
+        const { fragments } = await resolveTakiContributions([rule], page);
+        assert.equal(renderFragments(fragments, "head"), "");
+      }
+
+      const remapped = await resolveTakiContributions([baseHref("/")], page, {
+        assetMap: { "/": "javascript:alert(1)" },
+      });
+      assert.equal(renderFragments(remapped.fragments, "head"), "");
+
+      const remappedProtocolRelative = await resolveTakiContributions(
+        [externalScript("/app.js")],
+        page,
+        {
+          assetMap: { "/app.js": "//evil.example/app.js" },
+        },
+      );
+      assert.equal(renderFragments(remappedProtocolRelative.fragments, "head"), "");
+    } finally {
+      console.warn = original;
+    }
+  });
+
+  test("drops link-based fragment helpers with unsafe URLs", async () => {
+    const original = console.warn;
+    console.warn = () => {};
+    try {
+      const dangerous = [
+        feed("javascript:alert(1)"),
+        stylesheet("vbscript:msgbox(1)"),
+        stylesheet("//cdn.example/app.css"),
+        linkTag("canonical", "javascript:alert(1)"),
+        preconnect("data:text/html,x"),
+      ];
+      for (const rule of dangerous) {
+        const { fragments } = await resolveTakiContributions([rule], page);
+        assert.equal(renderFragments(fragments, "head"), "");
+      }
+    } finally {
+      console.warn = original;
+    }
+  });
+
+  test("strips event-handler attributes from rendered link, style, and base fragments", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [
+        stylesheet("/x.css", { attributes: { onload: "alert(1)", "data-ok": "1" } }),
+        inlineStyle(":root{}", { attributes: { onmouseover: "x()", id: "crit" } }),
+        baseHref("/app/", { attributes: { onclick: "y()" } }),
+      ],
+      page,
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      [
+        '<link data-ok="1" rel="stylesheet" href="/x.css">',
+        '<style id="crit">:root{}</style>',
+        '<base href="/app/">',
+      ].join("\n"),
+    );
+  });
+
+  test("keeps base and script fragments with safe URL schemes", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [baseHref("/app/"), externalScript("https://cdn.example/app.js")],
+      page,
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      ['<base href="/app/">', '<script src="https://cdn.example/app.js"></script>'].join("\n"),
+    );
+  });
+
+  test("honours a present empty-string assetMap mapping over fuzzy candidates", async () => {
+    const { fragments } = await resolveTakiContributions([externalScript("foo.js")], page, {
+      assetMap: {
+        "foo.js": "",
+        "/foo.js": "https://cdn.example/REAL.js",
+      },
+    });
+
+    assert.equal(renderFragments(fragments, "head"), '<script src=""></script>');
+  });
+
+  test("keeps link/script fragments that share rel+href/src but render differently", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [
+        icon("/favicon.ico", { sizes: "16x16", type: "image/x-icon" }),
+        icon("/favicon.ico", { sizes: "32x32", type: "image/x-icon" }),
+        stylesheet("/app.css", { media: "screen" }),
+        stylesheet("/app.css", { media: "print" }),
+        externalScript("/app.js", { async: true }),
+        externalScript("/app.js", { defer: true }),
+        externalScript("/app.js", { attributes: { nonce: "abc" } }),
+      ],
+      page,
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      [
+        '<link rel="icon" href="/favicon.ico" sizes="16x16" type="image/x-icon">',
+        '<link rel="icon" href="/favicon.ico" sizes="32x32" type="image/x-icon">',
+        '<link rel="stylesheet" href="/app.css" media="screen">',
+        '<link rel="stylesheet" href="/app.css" media="print">',
+        '<script src="/app.js" async></script>',
+        '<script src="/app.js" defer></script>',
+        '<script src="/app.js" nonce="abc"></script>',
+      ].join("\n"),
+    );
+  });
+
+  test("still collapses link/script fragments that render identically", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [
+        icon("/favicon.ico", { sizes: "16x16" }),
+        icon("/favicon.ico", { sizes: "16x16" }),
+        externalScript("/app.js", { defer: true }),
+        externalScript("/app.js", { defer: true }),
+      ],
+      page,
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      [
+        '<link rel="icon" href="/favicon.ico" sizes="16x16">',
+        '<script src="/app.js" defer></script>',
+      ].join("\n"),
+    );
+  });
+
+  test("collapses fragments whose distinct source paths resolve to one assetMap URL", async () => {
+    const { fragments } = await resolveTakiContributions(
+      [deferScript("src/vendor.js"), deferScript("src/app.js")],
+      page,
+      {
+        assetMap: {
+          "src/vendor.js": "/_astro/bundle.js",
+          "src/app.js": "/_astro/bundle.js",
+        },
+      },
+    );
+
+    assert.equal(
+      renderFragments(fragments, "head"),
+      '<script src="/_astro/bundle.js" defer></script>',
+    );
+  });
+
+  test("warns via console when a resolver rule runs without ctx", async () => {
+    const original = console.warn;
+    const warnings = [];
+    console.warn = (...args) => warnings.push(args);
+    let result;
+    try {
+      result = await resolveTakiContributions([resolve({ input: { source: "test" } })], page, {
+        resolve: () => [meta("description", "from resolver")],
+      });
+    } finally {
+      console.warn = original;
+    }
+
+    assert.deepEqual(result.metadata, []);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0][1].error, /requires a plugin "ctx"/);
+  });
+
+  test("throws a ctx-specific error when a missing-ctx resolver opts into onError throw", async () => {
+    await assert.rejects(
+      () =>
+        resolveTakiContributions([resolve({ onError: "throw" })], page, {
+          resolve: () => [meta("description", "x")],
+        }),
+      /requires a plugin "ctx" but none was provided/,
+    );
+  });
+
+  test("evicts rejected resolver promises so the same page object can retry", async () => {
+    let attempt = 0;
+    const plugin = createPlugin(
+      { rules: [resolve({ onError: "throw" })] },
+      {
+        resolve: () => {
+          attempt += 1;
+          if (attempt === 1) throw new Error("transient");
+          return [meta("ok", "recovered")];
+        },
+      },
+    );
+
+    const retryPage = { kind: "content", pageType: "page", path: "/retry" };
+    await assert.rejects(() => plugin.hooks["page:metadata"].handler({ page: retryPage }, ctx));
+    const metadata = await plugin.hooks["page:metadata"].handler({ page: retryPage }, ctx);
+
+    assert.equal(attempt, 2);
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [{ name: "ok", content: "recovered" }],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+  });
+
+  test("merges plugin templates options into explicit template rules", async () => {
+    const descriptor = takiPlugin({
+      runtime: "./src/emdash-taki-runtime.ts",
+      templates: { fragments: true, input: { section: "docs", locale: "global" } },
+      rules: [template("article", { input: { locale: "en" } })],
+    });
+
+    const templateRule = descriptor.options.rules.find((rule) => rule.kind === "resolve");
+    assert.equal(templateRule.fragments, true);
+    assert.deepEqual(templateRule.input, { section: "docs", locale: "en", template: "article" });
+    assert.deepEqual(templateRule.when, { pageType: "article" });
+    assert.ok(descriptor.capabilities.includes("hooks.page-fragments:register"));
+  });
+
+  test("a per-rule template option still wins over the plugin default", async () => {
+    const descriptor = takiPlugin({
+      runtime: "./src/emdash-taki-runtime.ts",
+      templates: { fragments: true },
+      rules: [template("article", { fragments: false })],
+    });
+
+    const templateRule = descriptor.options.rules.find((rule) => rule.kind === "resolve");
+    assert.equal(templateRule.fragments, false);
+    assert.equal(descriptor.capabilities.includes("hooks.page-fragments:register"), false);
+  });
+
+  test("warns and keeps siblings when a resolver returns a nested resolve rule", async () => {
+    const warnings = [];
+    const { metadata } = await resolveTakiContributions([resolve()], page, {
+      ctx: { log: { warn: (...args) => warnings.push(args) } },
+      resolve: () => [
+        meta("outer", "kept"),
+        { kind: "resolve", resolver: "default", input: { nested: true } },
+      ],
+    });
+
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [{ name: "outer", content: "kept" }],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0][0], /nested resolve rule/);
+  });
+
+  test("keeps valid resolver rules when the return array contains a null entry", async () => {
+    const { metadata } = await resolveTakiContributions([resolve()], page, {
+      ctx,
+      resolve: () => [meta("a", "1"), null, meta("b", "2")],
+    });
+
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [
+        { name: "a", content: "1" },
+        { name: "b", content: "2" },
+      ],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
+  });
+
+  test("metadata-only resolvers are not blocked by invalid fragment output", async () => {
+    const plugin = createPlugin(
+      { rules: [resolve()] },
+      {
+        resolve: () => [
+          meta("description", "ok"),
+          {
+            kind: "external-script",
+            placement: "head",
+            src: "/x.js",
+            attributes: { "bad name": "x" },
+          },
+        ],
+      },
+    );
+
+    assert.equal(plugin.hooks["page:fragments"], undefined);
+    const metadata = await plugin.hooks["page:metadata"].handler({ page }, ctx);
+    assert.deepEqual(resolvePageMetadata(metadata), {
+      meta: [{ name: "description", content: "ok" }],
+      properties: [],
+      links: [],
+      jsonld: [],
+    });
   });
 
   test("registers fragment hooks only when dynamic handlers opt into fragments", async () => {

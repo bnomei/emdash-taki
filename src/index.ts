@@ -1,3 +1,12 @@
+/**
+ * Taki EmDash plugin: declarative head rules, resolver dispatch, and waterfall rendering.
+ *
+ * Static rules and runtime resolvers produce metadata and fragment contributions that
+ * EmDash collects per page. `renderTaki` and `renderTakiStart` assemble the head
+ * waterfall (early resource hints, SEO metadata, late fragments). Typed helpers escape
+ * generated output; `htmlFragment`, `inlineScript`, and `inlineStyle` are trust boundaries.
+ */
+
 import {
   definePlugin,
   type PageFragmentContribution,
@@ -107,6 +116,9 @@ const CLOUDFLARE_TURNSTILE_SRC = "https://challenges.cloudflare.com/turnstile/v0
 const HTTP_URL_RE = /^https?:\/\//i;
 const DATA_IMAGE_RE = /^data:image\//i;
 const OTHER_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
+const DANGEROUS_URL_SCHEME_RE = /^(?:javascript|vbscript|data|file|blob):/i;
+// Match EmDash script policy: strip on* handlers from pre-rendered HTML fragments.
+const EVENT_HANDLER_ATTRIBUTE_RE = /^on/i;
 const FORBIDDEN_HTML_ATTRIBUTE_NAME_CHARS = `"'>/=`;
 
 type ExternalScriptRule = Extract<TakiFragmentRule, { kind: "external-script" }>;
@@ -128,6 +140,7 @@ type ScriptHelperOptions = Omit<
   placement?: TakiPlacement;
 };
 
+/** EmDash plugin descriptor: static rules, optional runtime entry, and fragment hook capabilities. */
 export function takiPlugin(
   options: TakiDescriptorOptions = {},
 ): PluginDescriptor<TakiCreatePluginOptions> {
@@ -148,6 +161,7 @@ export function takiPlugin(
   };
 }
 
+/** Plugin factory that resolves Taki contributions per page and registers EmDash metadata/fragment hooks. */
 export function createPlugin(
   options: TakiCreatePluginOptions = {},
   runtimeInput: TakiRuntimeInput = {},
@@ -175,6 +189,10 @@ export function createPlugin(
       resolvers: runtimeOptions.resolvers,
       templates: runtimeOptions.templates,
     });
+    // Evict rejected cache entries so the same page object can retry; callers still receive the rejection.
+    promise.catch(() => {
+      if (pageCache.get(page) === promise) pageCache.delete(page);
+    });
     pageCache.set(page, promise);
     return promise;
   };
@@ -201,12 +219,14 @@ export function createPlugin(
   });
 }
 
+/** Curries runtime resolvers/templates for the Astro `runtime` entry module. */
 export function defineTakiRuntime(runtimeInput: TakiRuntimeInput = {}) {
   const runtimeOptions = normalizeRuntimeInput(runtimeInput);
 
   return (options: TakiCreatePluginOptions = {}) => createPlugin(options, runtimeOptions);
 }
 
+/** Static `<meta name>` rule for EmDash metadata collection. */
 export function meta(
   name: string,
   content: string,
@@ -215,6 +235,7 @@ export function meta(
   return { kind: "meta", name, content, ...options };
 }
 
+/** Static Open Graph or other `<meta property>` rule. */
 export function property(
   propertyName: string,
   content: string,
@@ -223,6 +244,7 @@ export function property(
   return { kind: "property", property: propertyName, content, ...options };
 }
 
+/** Static metadata `<link rel>` rule; href safety is enforced downstream by EmDash. */
 export function link(
   rel: TakiMetadataLinkRel,
   href: string,
@@ -231,6 +253,7 @@ export function link(
   return { kind: "link", rel, href, ...options };
 }
 
+/** JSON-LD graph contribution keyed by `id` for last-wins dedupe. */
 export function jsonLd(
   id: string,
   graph: Record<string, unknown> | Array<Record<string, unknown>>,
@@ -239,6 +262,7 @@ export function jsonLd(
   return { kind: "jsonld", id, graph, ...options };
 }
 
+/** EmDash site-standard-document metadata bridge rule. */
 export function siteStandardDocument(
   href: string,
   options: Omit<TakiEmDashRule & { kind: "emdash:site-standard-document" }, "kind" | "href"> = {},
@@ -246,6 +270,7 @@ export function siteStandardDocument(
   return { kind: "emdash:site-standard-document", href, ...options };
 }
 
+/** EmDash NLWeb metadata bridge rule. */
 export function nlweb(
   href: string,
   options: Omit<TakiEmDashRule & { kind: "emdash:nlweb" }, "kind" | "href"> = {},
@@ -253,6 +278,7 @@ export function nlweb(
   return { kind: "emdash:nlweb", href, ...options };
 }
 
+/** External script fragment collected by the page-fragments hook. */
 export function externalScript(
   src: string,
   options: ExternalScriptHelperOptions = {},
@@ -261,6 +287,7 @@ export function externalScript(
   return { kind: "external-script", placement, src, ...rest };
 }
 
+/** Early-phase external script with `async` enabled. */
 export function asyncScript(src: string, options: ScriptHelperOptions = {}): TakiFragmentRule {
   return {
     kind: "external-script",
@@ -272,6 +299,7 @@ export function asyncScript(src: string, options: ScriptHelperOptions = {}): Tak
   };
 }
 
+/** Early-phase external script without async/defer. */
 export function blockingScript(src: string, options: ScriptHelperOptions = {}): TakiFragmentRule {
   return {
     kind: "external-script",
@@ -282,6 +310,7 @@ export function blockingScript(src: string, options: ScriptHelperOptions = {}): 
   };
 }
 
+/** Early-phase external script with `defer` enabled. */
 export function deferScript(src: string, options: ScriptHelperOptions = {}): TakiFragmentRule {
   return {
     kind: "external-script",
@@ -293,6 +322,7 @@ export function deferScript(src: string, options: ScriptHelperOptions = {}): Tak
   };
 }
 
+/** Inline script fragment; caller must supply trusted code (see SECURITY.md). */
 export function inlineScript(
   code: string,
   options: InlineScriptHelperOptions = {},
@@ -301,6 +331,7 @@ export function inlineScript(
   return { kind: "inline-script", placement, code, ...rest };
 }
 
+/** Raw HTML fragment; caller must supply trusted markup (see SECURITY.md). */
 export function htmlFragment(
   html: string,
   options: HtmlFragmentHelperOptions = {},
@@ -309,10 +340,12 @@ export function htmlFragment(
   return { kind: "html", placement, html, ...rest };
 }
 
+/** Early `<base href>` waterfall fragment with URL scheme filtering at collection. */
 export function baseHref(href: string, options: TakiHtmlHelperOptions = {}): TakiBaseHrefRule {
   return { kind: "base", phase: "early", href, ...options };
 }
 
+/** Static metadata `<link rel>` rule; href safety is enforced downstream by EmDash. */
 export function linkTag(
   rel: string,
   href: string,
@@ -321,18 +354,22 @@ export function linkTag(
   return htmlLink(rel, href, options);
 }
 
+/** Early `rel=preconnect` resource hint. */
 export function preconnect(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("preconnect", href, { phase: "early", ...options });
 }
 
+/** Early `rel=dns-prefetch` resource hint. */
 export function dnsPrefetch(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("dns-prefetch", href, { phase: "early", ...options });
 }
 
+/** Early `rel=stylesheet` link rendered in the waterfall. */
 export function stylesheet(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("stylesheet", href, { phase: "early", ...options });
 }
 
+/** Early `rel=preload` hint with required `as` attribute. */
 export function preload(
   href: string,
   as: string,
@@ -341,22 +378,27 @@ export function preload(
   return htmlLink("preload", href, { phase: "early", ...options, as });
 }
 
+/** Early `rel=prefetch` resource hint. */
 export function prefetch(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("prefetch", href, { phase: "early", ...options });
 }
 
+/** Early `rel=prerender` resource hint. */
 export function prerender(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("prerender", href, { phase: "early", ...options });
 }
 
+/** Favicon or touch icon link rule. */
 export function icon(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("icon", href, options);
 }
 
+/** Web app manifest link rule. */
 export function manifest(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("manifest", href, options);
 }
 
+/** RSS/Atom `rel=alternate` feed link with default RSS type/title. */
 export function feed(href: string, options: TakiLinkTagOptions = {}): TakiLinkTagRule {
   return htmlLink("alternate", href, {
     type: "application/rss+xml",
@@ -365,10 +407,12 @@ export function feed(href: string, options: TakiLinkTagOptions = {}): TakiLinkTa
   });
 }
 
+/** Early inline `<style>` fragment; caller must supply trusted CSS (see SECURITY.md). */
 export function inlineStyle(css: string, options: TakiHtmlHelperOptions = {}): TakiInlineStyleRule {
   return { kind: "inline-style", phase: "early", css, ...options };
 }
 
+/** Cloudflare Web Analytics beacon script fragment. */
 export function cloudflareWebAnalytics(
   token: string,
   options: Omit<CloudflareWebAnalyticsRule, "kind" | "token"> = {},
@@ -376,18 +420,21 @@ export function cloudflareWebAnalytics(
   return { kind: "cloudflare:web-analytics", token, ...options };
 }
 
+/** Cloudflare Zaraz loader script fragment. */
 export function cloudflareZaraz(
   options: Omit<CloudflareZarazRule, "kind"> = {},
 ): CloudflareZarazRule {
   return { kind: "cloudflare:zaraz", ...options };
 }
 
+/** Cloudflare Turnstile challenge script and optional preconnect. */
 export function cloudflareTurnstile(
   options: Omit<CloudflareTurnstileRule, "kind"> = {},
 ): CloudflareTurnstileRule {
   return { kind: "cloudflare:turnstile", ...options };
 }
 
+/** Per-template resolver rule; defaults `when` to matching `pageType`. */
 export function template(
   name: string,
   options: TakiTemplatesOptions = {},
@@ -399,6 +446,7 @@ export function template(
   });
 }
 
+/** Per-template resolver rule; defaults `when` to matching `pageType`. */
 export function templates(options: TakiTemplatesOptions = {}): TakiResolverRule<TakiTemplateInput> {
   return {
     kind: "resolve",
@@ -412,15 +460,18 @@ type ResolverRuleOptions<TInput extends TakiJsonValue = TakiJsonValue> = Omit<
   "kind" | "resolver"
 >;
 
+/** Named resolver rule. Does not suppress automatic template registration when `runtime` is set. */
 export function resolve<TInput extends TakiJsonValue = TakiJsonValue>(
   options?: ResolverRuleOptions<TInput>,
 ): TakiResolverRule<TInput>;
 
+/** Named resolver rule. Does not suppress automatic template registration when `runtime` is set. */
 export function resolve<TInput extends TakiJsonValue = TakiJsonValue>(
   resolver: string,
   options?: ResolverRuleOptions<TInput>,
 ): TakiResolverRule<TInput>;
 
+/** Named resolver rule. Does not suppress automatic template registration when `runtime` is set. */
 export function resolve<TInput extends TakiJsonValue = TakiJsonValue>(
   resolverOrOptions?: string | ResolverRuleOptions<TInput>,
   options: ResolverRuleOptions<TInput> = {},
@@ -436,6 +487,7 @@ export function resolve<TInput extends TakiJsonValue = TakiJsonValue>(
   };
 }
 
+/** Resolve, collect, and dedupe Taki metadata and fragments for one page context. */
 export async function resolveTakiContributions(
   rules: TakiRule[],
   page: TakiPageContext,
@@ -445,10 +497,14 @@ export async function resolveTakiContributions(
 
   return {
     metadata: dedupeMetadataLastWins(collectMetadata(resolved.rules, page, resolved.assetMap)),
-    fragments: dedupeFragmentsLastWins(collectFragments(resolved.rules, page, resolved.assetMap)),
+    // Skip fragment collection when no page-fragments hook is registered.
+    fragments: usesFragments(rules)
+      ? dedupeFragmentsLastWins(collectFragments(resolved.rules, page, resolved.assetMap))
+      : [],
   };
 }
 
+/** True when a head fragment uses the reserved early waterfall key prefix. */
 export function isEarlyTakiFragment(contribution: PageFragmentContribution): boolean {
   return (
     contribution.placement === "head" &&
@@ -457,6 +513,7 @@ export function isEarlyTakiFragment(contribution: PageFragmentContribution): boo
   );
 }
 
+/** Render early waterfall fragments via the page runtime, then strip them from the shared cache. */
 export async function renderTakiStart(
   page: TakiPageContext,
   locals: Record<string, unknown>,
@@ -467,11 +524,15 @@ export async function renderTakiStart(
 
   const fragments = await runtime.collectPageFragments(page);
   const earlyFragments = pageApi.resolveFragments(fragments.filter(isEarlyTakiFragment), "head");
+
+  // Render before stripping the shared cache so a render failure leaves early fragments recoverable.
+  const html = pageApi.renderFragments(earlyFragments, "head");
   removeEarlyTakiFragments(fragments);
 
-  return pageApi.renderFragments(earlyFragments, "head");
+  return html;
 }
 
+/** Assemble the full head waterfall: basics, early fragments, metadata, site identity, late fragments. */
 export async function renderTaki(
   page: TakiPageContext,
   locals: Record<string, unknown>,
@@ -534,13 +595,39 @@ function createPluginOptions(options: TakiDescriptorOptions): TakiCreatePluginOp
 
 function createRules(options: TakiDescriptorOptions): TakiRule[] {
   const rules = [...(options.rules ?? [])];
+  const templateOptions = isRecord(options.templates) ? options.templates : {};
 
   if (shouldAutoRegisterTemplates(options, rules)) {
-    const templateOptions = isRecord(options.templates) ? options.templates : {};
     rules.push(templates(templateOptions));
+    return rules;
+  }
+
+  if (options.runtime && options.templates !== false && Object.keys(templateOptions).length > 0) {
+    return rules.map((rule) =>
+      isTemplateResolverRule(rule) ? mergeTemplateRuleOptions(templateOptions, rule) : rule,
+    );
   }
 
   return rules;
+}
+
+function mergeTemplateRuleOptions(
+  templateOptions: Record<string, unknown>,
+  rule: TakiResolverRule,
+): TakiRule {
+  const merged = {
+    ...templateOptions,
+    ...rule,
+  };
+
+  if (isRecord(templateOptions.input) || isRecord(rule.input)) {
+    merged.input = {
+      ...(isRecord(templateOptions.input) ? templateOptions.input : {}),
+      ...(isRecord(rule.input) ? rule.input : {}),
+    };
+  }
+
+  return merged as TakiRule;
 }
 
 function shouldAutoRegisterTemplates(options: TakiDescriptorOptions, rules: TakiRule[]): boolean {
@@ -555,12 +642,16 @@ function normalizeRuntimeInput(runtimeInput: TakiRuntimeInput): TakiRuntimeOptio
   }
 
   if (isRuntimeConfig(runtimeInput)) {
+    const { resolve, resolvers, templates, ...rest } = runtimeInput;
+    // Shorthand template-map keys named resolve/resolvers/templates fold back as template modules.
+    const merged = {
+      ...normalizeTemplateModules(rest as TakiTemplateModuleMap),
+      ...(templates ? normalizeTemplateModules(templates) : {}),
+    };
     return {
-      resolve: runtimeInput.resolve,
-      resolvers: runtimeInput.resolvers,
-      templates: runtimeInput.templates
-        ? normalizeTemplateModules(runtimeInput.templates)
-        : undefined,
+      resolve,
+      resolvers,
+      templates: Object.keys(merged).length > 0 ? merged : undefined,
     };
   }
 
@@ -641,6 +732,10 @@ async function resolveRules(
   page: TakiPageContext,
   options: TakiResolveOptions,
 ): Promise<{ assetMap?: TakiAssetMap; rules: TakiStaticRule[] }> {
+  // Reject invalid static fragment attributes before any resolver side effects run.
+  validateStaticFragmentAttributes(rules, page);
+
+  const collectsFragments = usesFragments(rules);
   const resolvedRules: TakiStaticRule[] = [];
   let assetMap = options.assetMap ? { ...options.assetMap } : undefined;
 
@@ -653,9 +748,21 @@ async function resolveRules(
     if (!matchesPage(rule.when, page)) continue;
 
     const resolver = getResolver(rule.resolver, options);
-    if (!resolver || !options.ctx) {
-      const error = new Error(`Taki resolver "${rule.resolver}" is not registered`);
-      handleResolverError(rule, error, options);
+    if (!resolver) {
+      handleResolverError(
+        rule,
+        new Error(`Taki resolver "${rule.resolver}" is not registered`),
+        options,
+      );
+      continue;
+    }
+
+    if (!options.ctx) {
+      handleResolverError(
+        rule,
+        new Error(`Taki resolver "${rule.resolver}" requires a plugin "ctx" but none was provided`),
+        options,
+      );
       continue;
     }
 
@@ -667,9 +774,16 @@ async function resolveRules(
         rule,
       });
       const normalized = normalizeResolverResult(result);
+      // Honor resolver onError by validating fragment output inside this try/catch.
+      if (collectsFragments) validateStaticFragmentAttributes(normalized.rules, page);
       resolvedRules.push(...normalized.rules);
       if (normalized.assetMap) {
         assetMap = { ...assetMap, ...normalized.assetMap };
+      }
+      if (normalized.nestedResolverCount > 0) {
+        options.ctx?.log?.warn?.(
+          `Taki resolver "${rule.resolver}" returned ${normalized.nestedResolverCount} nested resolve rule(s); nested resolvers are not executed and were ignored.`,
+        );
       }
     } catch (error) {
       handleResolverError(rule, error, options);
@@ -721,20 +835,29 @@ function templateNameFromContext(context: Parameters<TakiResolver>[0]) {
 function normalizeResolverResult(result: TakiResolverResult): {
   assetMap?: TakiAssetMap;
   rules: TakiStaticRule[];
+  nestedResolverCount: number;
 } {
-  if (!result) return { rules: [] };
+  if (!result) return { rules: [], nestedResolverCount: 0 };
 
-  if (Array.isArray(result)) {
-    return { rules: result.filter(isStaticRule) };
+  const flat = Array.isArray(result)
+    ? result
+    : [...(result.rules ?? []), ...(result.metadata ?? []), ...(result.fragments ?? [])];
+
+  const rules: TakiStaticRule[] = [];
+  let nestedResolverCount = 0;
+  for (const entry of flat) {
+    if (!isRecord(entry)) continue;
+    if (isResolverRule(entry)) {
+      nestedResolverCount += 1;
+      continue;
+    }
+    rules.push(entry);
   }
 
   return {
-    assetMap: result.assetMap,
-    rules: [
-      ...(result.rules ?? []),
-      ...(result.metadata ?? []),
-      ...(result.fragments ?? []),
-    ].filter(isStaticRule),
+    assetMap: Array.isArray(result) ? undefined : result.assetMap,
+    rules,
+    nestedResolverCount,
   };
 }
 
@@ -747,15 +870,25 @@ function handleResolverError(
     throw error;
   }
 
-  options.ctx?.log.warn(`Taki resolver "${rule.resolver}" failed`, {
-    error: error instanceof Error ? error.message : String(error),
-  });
+  const message = `Taki resolver "${rule.resolver}" failed`;
+  const detail = { error: error instanceof Error ? error.message : String(error) };
+  const warn = options.ctx?.log?.warn;
+  if (warn) {
+    warn(message, detail);
+  } else {
+    // Direct resolveTakiContributions calls may omit ctx; still surface the warning.
+    console.warn(message, detail);
+  }
 }
 
 function renderTakiBasics(options: TakiRenderOptions, page: TakiPageContext): string {
   const basics = options.basics ?? false;
-  const charset = optionValue(options.charset, basics ? "utf-8" : null);
-  const viewport = optionValue(options.viewport, basics ? "width=device-width" : null);
+  const charset = optionValue(options.charset, "utf-8", basics ? "utf-8" : null);
+  const viewport = optionValue(
+    options.viewport,
+    "width=device-width",
+    basics ? "width=device-width" : null,
+  );
   const title = titleValue(options.title, page, basics);
   const parts: string[] = [];
 
@@ -774,9 +907,13 @@ function renderTakiBasics(options: TakiRenderOptions, page: TakiPageContext): st
   return parts.join("\n");
 }
 
-function optionValue(value: boolean | string | undefined, fallback: string | null): string | null {
+function optionValue(
+  value: boolean | string | undefined,
+  trueValue: string,
+  fallback: string | null,
+): string | null {
   if (value === false) return null;
-  if (value === true) return fallback;
+  if (value === true) return trueValue;
   if (typeof value === "string") return value;
   return fallback;
 }
@@ -847,17 +984,19 @@ function dedupeLastWins<T>(items: T[], keyFor: (item: T) => string | undefined):
 }
 
 function metadataDedupeKey(contribution: PageMetadataContribution): string | undefined {
+  const key = "key" in contribution && contribution.key ? contribution.key : undefined;
+
   if (contribution.kind === "meta") {
-    return `meta:${contribution.key ?? contribution.name}`;
+    return `meta:${key ?? contribution.name}`;
   }
 
   if (contribution.kind === "property") {
-    return `property:${contribution.key ?? contribution.property}`;
+    return `property:${key ?? contribution.property}`;
   }
 
   if (contribution.kind === "link") {
     if (contribution.rel === "canonical") return "link:canonical";
-    return `link:${contribution.rel}:${contribution.key ?? contribution.hreflang ?? contribution.href}`;
+    return `link:${contribution.rel}:${key ?? contribution.hreflang ?? contribution.href}`;
   }
 
   if (contribution.id) {
@@ -891,6 +1030,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function emptyToUndefined(value: string | undefined): string | undefined {
+  return value ? value : undefined;
+}
+
+function linkContributionKey(
+  rel: string,
+  explicitKey: string | undefined,
+  hreflang: string | undefined,
+  href: string,
+): string | undefined {
+  if (rel === "canonical") return explicitKey;
+  return `${rel}:${explicitKey ?? hreflang ?? href}`;
+}
+
 function htmlLink(rel: string, href: string, options: TakiLinkTagOptions): TakiLinkTagRule {
   return { kind: "link-tag", rel, href, ...options };
 }
@@ -911,6 +1064,7 @@ function renderAttributes(attributes: TakiAttributes | undefined): string {
   if (!attributes) return "";
   validateAttributeNames(attributes);
   return Object.entries(attributes)
+    .filter(([key]) => !EVENT_HANDLER_ATTRIBUTE_RE.test(key))
     .filter(([, value]) => value !== undefined && value !== null && value !== false)
     .map(([key, value]) => {
       const escapedKey = escapeHtmlAttr(key);
@@ -934,6 +1088,51 @@ function validateAttributeNames<T extends TakiAttributes | Record<string, string
   }
 
   return attributes;
+}
+
+function normalizeFragmentAttributes(
+  attributes: TakiAttributes | Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!attributes) return undefined;
+  validateAttributeNames(attributes);
+
+  const normalized: Record<string, string> = {};
+  for (const [name, value] of Object.entries(attributes)) {
+    if (value === false || value === null || value === undefined) continue;
+    normalized[name] = value === true ? "" : String(value);
+  }
+  return normalized;
+}
+
+function isSafeFragmentUrl(value: string): boolean {
+  // Strip ASCII whitespace/control chars before scheme checks (browser URL parsing quirk).
+  const normalized = value.replace(/[\u0000-\u0020]/g, "");
+  return !normalized.startsWith("//") && !DANGEROUS_URL_SCHEME_RE.test(normalized);
+}
+
+function warnUnsafeFragmentUrl(tag: string, url: string): void {
+  console.warn(`Taki dropped a ${tag} fragment with an unsafe URL`, { url });
+}
+
+function validateStaticFragmentAttributes(rules: TakiRule[], page: TakiPageContext): void {
+  for (const rule of rules) {
+    if (!hasValidatedFragmentAttributes(rule)) continue;
+    if (!matchesPage(rule.when, page)) continue;
+    validateAttributeNames(rule.attributes);
+  }
+}
+
+function hasValidatedFragmentAttributes(
+  rule: TakiRule,
+): rule is TakiRule & { attributes?: TakiAttributes | Record<string, string> } {
+  return (
+    rule.kind === "external-script" ||
+    rule.kind === "inline-script" ||
+    rule.kind === "link-tag" ||
+    rule.kind === "base" ||
+    rule.kind === "inline-style" ||
+    isCloudflareRule(rule)
+  );
 }
 
 function isValidHtmlAttributeName(name: string): boolean {
@@ -981,37 +1180,47 @@ function collectMetadata(
     if (!matchesPage(rule.when, page)) continue;
 
     if (rule.kind === "meta") {
-      metadata.push({ kind: "meta", name: rule.name, content: rule.content, key: rule.key });
+      metadata.push({
+        kind: "meta",
+        name: rule.name,
+        content: rule.content,
+        key: emptyToUndefined(rule.key),
+      });
     } else if (rule.kind === "property") {
       metadata.push({
         kind: "property",
         property: rule.property,
         content: rule.content,
-        key: rule.key,
+        key: emptyToUndefined(rule.key),
       });
     } else if (rule.kind === "link") {
+      const resolvedHref = resolveAssetUrl(rule.href, assetMap);
       metadata.push({
         kind: "link",
         rel: rule.rel,
-        href: resolveAssetUrl(rule.href, assetMap),
+        href: resolvedHref,
         hreflang: rule.hreflang,
-        key: rule.key,
+        key: linkContributionKey(rule.rel, emptyToUndefined(rule.key), rule.hreflang, resolvedHref),
       });
     } else if (rule.kind === "jsonld") {
-      metadata.push({ kind: "jsonld", id: rule.id ?? rule.key, graph: rule.graph });
+      metadata.push({
+        kind: "jsonld",
+        id: emptyToUndefined(rule.id) ?? emptyToUndefined(rule.key),
+        graph: rule.graph,
+      });
     } else if (rule.kind === "emdash:site-standard-document") {
       metadata.push({
         kind: "link",
         rel: "site.standard.document",
         href: resolveAssetUrl(rule.href, assetMap),
-        key: rule.key ?? "emdash-taki:site-standard-document",
+        key: emptyToUndefined(rule.key) ?? "emdash-taki:site-standard-document",
       });
     } else if (rule.kind === "emdash:nlweb") {
       metadata.push({
         kind: "link",
         rel: "nlweb",
         href: resolveAssetUrl(rule.href, assetMap),
-        key: rule.key ?? "emdash-taki:nlweb",
+        key: emptyToUndefined(rule.key) ?? "emdash-taki:nlweb",
       });
     }
   }
@@ -1030,21 +1239,30 @@ function collectFragments(
     if (!matchesPage(rule.when, page)) continue;
 
     if (rule.kind === "external-script") {
+      const attributes = normalizeFragmentAttributes(rule.attributes);
+      const resolvedSrc = resolveAssetUrl(rule.src, assetMap);
+      if (!isSafeFragmentUrl(resolvedSrc)) {
+        warnUnsafeFragmentUrl("<script>", resolvedSrc);
+        continue;
+      }
       fragments.push({
         kind: "external-script",
         placement: rule.placement,
-        src: resolveAssetUrl(rule.src, assetMap),
+        src: resolvedSrc,
         async: rule.async,
         defer: rule.defer,
-        attributes: validateAttributeNames(rule.attributes),
-        key: fragmentKey(rule, `script:${rule.src}`),
+        attributes,
+        key: fragmentKey(
+          rule,
+          externalScriptDedupeKey(resolvedSrc, rule.async, rule.defer, attributes),
+        ),
       });
     } else if (rule.kind === "inline-script") {
       fragments.push({
         kind: "inline-script",
         placement: rule.placement,
         code: rule.code,
-        attributes: validateAttributeNames(rule.attributes),
+        attributes: normalizeFragmentAttributes(rule.attributes),
         key: fragmentKey(rule, `inline-script:${hashString(rule.code)}`),
       });
     } else if (rule.kind === "html") {
@@ -1055,13 +1273,21 @@ function collectFragments(
         key: fragmentKey(rule, `html:${hashString(rule.html)}`),
       });
     } else if (rule.kind === "link-tag") {
-      fragments.push(renderLinkFragment(rule, assetMap));
+      const fragment = renderLinkFragment(rule, assetMap);
+      if (fragment) fragments.push(fragment);
     } else if (rule.kind === "base") {
-      fragments.push(renderBaseFragment(rule, assetMap));
+      const fragment = renderBaseFragment(rule, assetMap);
+      if (fragment) fragments.push(fragment);
     } else if (rule.kind === "inline-style") {
       fragments.push(renderInlineStyleFragment(rule));
     } else if (isCloudflareRule(rule)) {
-      fragments.push(...cloudflareFragments(rule, assetMap));
+      for (const fragment of cloudflareFragments(rule, assetMap)) {
+        if (fragment.kind === "external-script" && !isSafeFragmentUrl(fragment.src)) {
+          warnUnsafeFragmentUrl("<script>", fragment.src);
+          continue;
+        }
+        fragments.push(fragment);
+      }
     }
   }
 
@@ -1071,7 +1297,7 @@ function collectFragments(
 function renderLinkFragment(
   rule: TakiLinkTagRule,
   assetMap?: TakiAssetMap,
-): PageFragmentContribution {
+): PageFragmentContribution | null {
   const {
     rel,
     href,
@@ -1086,10 +1312,15 @@ function renderLinkFragment(
     title,
     type,
   } = rule;
+  const resolvedHref = resolveAssetUrl(href, assetMap);
+  if (!isSafeFragmentUrl(resolvedHref)) {
+    warnUnsafeFragmentUrl(`<link rel="${rel}">`, resolvedHref);
+    return null;
+  }
   const attrs: TakiAttributes = {
     ...attributes,
     rel,
-    href: resolveAssetUrl(href, assetMap),
+    href: resolvedHref,
     as,
     crossorigin,
     fetchpriority,
@@ -1100,37 +1331,45 @@ function renderLinkFragment(
     type,
   };
 
+  const html = renderVoidElement("link", attrs);
   return {
     kind: "html",
     placement,
-    html: renderVoidElement("link", attrs),
-    key: fragmentKey(rule, `link:${rel}:${href}`),
+    html,
+    key: fragmentKey(rule, `link:${hashString(html)}`),
   };
 }
 
 function renderBaseFragment(
   rule: TakiBaseHrefRule,
   assetMap?: TakiAssetMap,
-): PageFragmentContribution {
+): PageFragmentContribution | null {
   const { href, placement = "head", attributes } = rule;
+  const resolvedHref = resolveAssetUrl(href, assetMap);
+  if (!isSafeFragmentUrl(resolvedHref)) {
+    warnUnsafeFragmentUrl("<base>", resolvedHref);
+    return null;
+  }
+  const html = renderVoidElement("base", {
+    ...attributes,
+    href: resolvedHref,
+  });
   return {
     kind: "html",
     placement,
-    html: renderVoidElement("base", {
-      ...attributes,
-      href: resolveAssetUrl(href, assetMap),
-    }),
-    key: fragmentKey(rule, `base:${href}`),
+    html,
+    key: fragmentKey(rule, `base:${hashString(html)}`),
   };
 }
 
 function renderInlineStyleFragment(rule: TakiInlineStyleRule): PageFragmentContribution {
   const { css, placement = "head", attributes } = rule;
+  const html = renderElement("style", attributes, escapeStyleText(css));
   return {
     kind: "html",
     placement,
-    html: renderElement("style", attributes, escapeStyleText(css)),
-    key: fragmentKey(rule, `style:${hashString(css)}`),
+    html,
+    key: fragmentKey(rule, `style:${hashString(html)}`),
   };
 }
 
@@ -1148,7 +1387,7 @@ function cloudflareFragments(
         placement: rule.placement ?? "body:end",
         src: resolveAssetUrl(rule.src ?? CLOUDFLARE_WEB_ANALYTICS_SRC, assetMap),
         defer: true,
-        attributes: validateAttributeNames({
+        attributes: normalizeFragmentAttributes({
           ...rule.attributes,
           "data-cf-beacon": JSON.stringify(beacon),
         }),
@@ -1163,7 +1402,7 @@ function cloudflareFragments(
         kind: "external-script",
         placement: rule.placement ?? "head",
         src: resolveAssetUrl(rule.src ?? CLOUDFLARE_ZARAZ_SRC, assetMap),
-        attributes: validateAttributeNames({
+        attributes: normalizeFragmentAttributes({
           ...rule.attributes,
           referrerpolicy: rule.referrerPolicy ?? "origin",
         }),
@@ -1193,7 +1432,7 @@ function cloudflareFragments(
     src: resolveAssetUrl(src, assetMap),
     async: rule.render !== "explicit",
     defer: true,
-    attributes: validateAttributeNames(rule.attributes),
+    attributes: normalizeFragmentAttributes(rule.attributes),
     key: fragmentKey(rule, "emdash-taki:cloudflare:turnstile"),
   });
 
@@ -1226,18 +1465,37 @@ function isResolverRule(rule: TakiRule): rule is TakiResolverRule {
   return rule.kind === "resolve";
 }
 
-function isTemplateResolverRule(rule: TakiRule): boolean {
+function isTemplateResolverRule(rule: TakiRule): rule is TakiResolverRule<TakiTemplateInput> {
   return isResolverRule(rule) && rule.resolver === TEMPLATE_RESOLVER;
 }
 
 function isStaticRule(rule: TakiRule): rule is TakiStaticRule {
-  return !isResolverRule(rule);
+  return isRecord(rule) && !isResolverRule(rule);
 }
 
 function fragmentKey(rule: { key?: string; phase?: TakiRenderPhase }, fallback: string): string {
+  // Reserve the early prefix for phase:"early" fragments only.
+  if (rule.key !== undefined && rule.key.startsWith(EARLY_TAKI_FRAGMENT_KEY_PREFIX)) {
+    throw new Error(
+      `Fragment key "${rule.key}" must not start with the reserved "${EARLY_TAKI_FRAGMENT_KEY_PREFIX}" prefix. Use { phase: "early" } to mark a fragment as early.`,
+    );
+  }
+
   const key = rule.key ?? fallback;
   if (rule.phase === "early") return `${EARLY_TAKI_FRAGMENT_KEY_PREFIX}${key}`;
   return key;
+}
+
+function externalScriptDedupeKey(
+  src: string,
+  async: boolean | undefined,
+  defer: boolean | undefined,
+  attributes: Record<string, string> | undefined,
+): string {
+  const flags = `${async ? "a" : ""}${defer ? "d" : ""}`;
+  const attrs =
+    attributes && Object.keys(attributes).length > 0 ? hashString(JSON.stringify(attributes)) : "";
+  return `script:${src}:${flags}:${attrs}`;
 }
 
 function hashString(value: string): string {
@@ -1251,8 +1509,8 @@ function hashString(value: string): string {
 function resolveAssetUrl(value: string, assetMap: TakiAssetMap | undefined): string {
   if (!assetMap) return value;
 
-  const exact = assetMap[value];
-  if (exact) return exact;
+  // Exact key presence wins over value truthiness, so "" mappings are intentional.
+  if (Object.prototype.hasOwnProperty.call(assetMap, value)) return assetMap[value];
 
   if (/^[a-z][a-z\d+.-]*:/i.test(value) || value.startsWith("//") || value.startsWith("#")) {
     return value;
@@ -1262,10 +1520,12 @@ function resolveAssetUrl(value: string, assetMap: TakiAssetMap | undefined): str
   candidates.add(value.replace(/^\/+/, ""));
   if (value.startsWith("./")) candidates.add(value.slice(2));
   if (!value.startsWith("/")) candidates.add(`/${value}`);
+  const bare = value.replace(/^\.?\/+/, "");
+  candidates.add(bare);
+  candidates.add(`/${bare}`);
 
   for (const candidate of candidates) {
-    const resolved = assetMap[candidate];
-    if (resolved) return resolved;
+    if (Object.prototype.hasOwnProperty.call(assetMap, candidate)) return assetMap[candidate];
   }
 
   return value;
@@ -1322,6 +1582,8 @@ function matchesPage(
 }
 
 function matchesSinglePage(matcher: TakiMatcher, page: TakiPageContext): boolean {
+  // Null holes in when arrays are non-matches, not hook failures.
+  if (!isRecord(matcher)) return false;
   if (matcher.kind !== undefined && !matchesOneOrMany(matcher.kind, page.kind)) return false;
   if (matcher.pageType !== undefined && !matchesOneOrMany(matcher.pageType, page.pageType))
     return false;
@@ -1345,6 +1607,7 @@ function matchesOneOrMany<T extends string | null | undefined>(
   return (Array.isArray(expected) ? expected : [expected]).includes(actual);
 }
 
-function matchesPrefix(prefix: string | string[], path: string): boolean {
+function matchesPrefix(prefix: string | string[], path: string | undefined): boolean {
+  if (typeof path !== "string") return false;
   return (Array.isArray(prefix) ? prefix : [prefix]).some((value) => path.startsWith(value));
 }

@@ -1,3 +1,10 @@
+/**
+ * Type vocabulary for Taki rules, resolvers, and EmDash head contributions.
+ *
+ * Rules are declarative static definitions or dynamic `resolve` hooks. Collection
+ * turns matched rules into EmDash metadata and fragment contributions for one
+ * immutable page context per request.
+ */
 import type {
   PageFragmentContribution,
   PageMetadataContribution,
@@ -7,18 +14,22 @@ import type {
   PublicPageContext,
 } from "emdash";
 
+/** EmDash public page context; must stay immutable for the lifetime of a request. */
 export type TakiPageContext = PublicPageContext;
 
 export type TakiPlacement = PagePlacement;
 
+/** Head fragment ordering bucket: early hints before SEO metadata, late after. */
 export type TakiRenderPhase = "early" | "late";
 
 export type TakiAttributeValue = string | number | boolean | null | undefined;
 
 export type TakiAttributes = Record<string, TakiAttributeValue>;
 
+/** Build-output path remapping applied while collecting fragment `src`/`href` values. */
 export type TakiAssetMap = Record<string, string>;
 
+/** Runtime inputs for standalone `resolveTakiContributions` or plugin resolver dispatch. */
 export type TakiResolveOptions = {
   assetMap?: TakiAssetMap;
   ctx?: PluginContext;
@@ -43,6 +54,7 @@ export type TakiMetadataLinkRel =
   | "nlweb"
   | "site.standard.document";
 
+/** Page-matching predicate shared by static rules and resolver `when` clauses. */
 export type TakiMatcher = {
   kind?: PublicPageContext["kind"] | PublicPageContext["kind"][];
   pageType?: string | string[];
@@ -57,6 +69,7 @@ export type TakiRuleBase = {
   when?: TakiMatcher | TakiMatcher[];
 };
 
+/** Resolver failure policy: drop the rule and warn, or fail the surrounding hook. */
 export type TakiResolverErrorMode = "ignore" | "throw";
 
 export type TakiHtmlHelperOptions = TakiRuleBase & {
@@ -95,6 +108,7 @@ export type TakiInlineStyleRule = TakiRuleBase &
     css: string;
   };
 
+/** Dynamic rule that invokes a named resolver and may return further static rules. */
 export type TakiResolverRule<TInput = unknown> = TakiRuleBase & {
   kind: "resolve";
   resolver: string;
@@ -195,6 +209,7 @@ export type TakiCloudflareRule =
 
 export type TakiWaterfallRule = TakiLinkTagRule | TakiBaseHrefRule | TakiInlineStyleRule;
 
+/** Concrete rule kinds produced after resolver expansion. */
 export type TakiStaticRule =
   | TakiMetadataRule
   | TakiFragmentRule
@@ -202,6 +217,7 @@ export type TakiStaticRule =
   | TakiCloudflareRule
   | TakiWaterfallRule;
 
+/** Full rule list accepted by the plugin descriptor and `resolveTakiContributions`. */
 export type TakiRule =
   | TakiMetadataRule
   | TakiFragmentRule
@@ -210,6 +226,7 @@ export type TakiRule =
   | TakiWaterfallRule
   | TakiResolverRule<unknown>;
 
+/** Resolver return shape: static rules, grouped buckets, or an asset-map side effect. */
 export type TakiResolverResult =
   | TakiStaticRule[]
   | {
@@ -260,12 +277,15 @@ export type TakiRuntimeOptions = {
   templates?: TakiTemplateResolverMap;
 };
 
+/** Runtime export shape: resolver config plus optional Vite glob template modules. */
 export type TakiRuntimeConfig = Omit<TakiRuntimeOptions, "templates"> & {
   templates?: TakiTemplateModuleMap | TakiTemplateResolverMap;
 };
 
+/** Value accepted by `defineTakiRuntime`: shorthand templates map, config object, or default resolver. */
 export type TakiRuntimeInput = TakiRuntimeConfig | TakiResolver | TakiTemplateModuleMap;
 
+/** Options for `renderTaki` / `renderTakiStart` document basics outside EmDash metadata. */
 export type TakiRenderOptions = {
   basics?: boolean;
   charset?: boolean | string;
@@ -280,6 +300,7 @@ export type TakiTemplatesOptions = Omit<
   input?: Omit<TakiTemplateInput, "template">;
 };
 
+/** Astro integration descriptor options for `takiPlugin()`. */
 export type TakiDescriptorOptions = {
   allowedHosts?: string[];
   assetMap?: TakiAssetMap;
@@ -290,11 +311,13 @@ export type TakiDescriptorOptions = {
   templates?: boolean | TakiTemplatesOptions;
 };
 
+/** Serializable plugin options stored in the EmDash plugin descriptor. */
 export type TakiCreatePluginOptions = Pick<
   TakiDescriptorOptions,
   "allowedHosts" | "assetMap" | "capabilities" | "priority" | "rules"
 >;
 
+/** Output of rule resolution before EmDash hook handoff. */
 export type ResolvedTakiContributions = {
   metadata: PageMetadataContribution[];
   fragments: PageFragmentContribution[];

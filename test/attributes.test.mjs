@@ -1,3 +1,4 @@
+/** Attribute-name validation and resolver error-path contracts for fragment collection. */
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -8,6 +9,7 @@ import {
   inlineScript,
   inlineStyle,
   linkTag,
+  resolve,
   resolveTakiContributions,
 } from "../dist/index.mjs";
 
@@ -59,6 +61,57 @@ test("invalid fragment attribute names are rejected before renderer handoff", as
         page,
       ),
     /Invalid HTML attribute name "data bad"/,
+  );
+});
+
+test("resolver side effects do not run when a static rule has invalid attributes", async () => {
+  let resolverRan = false;
+
+  await assert.rejects(
+    () =>
+      resolveTakiContributions(
+        [
+          externalScript("/a.js", { attributes: { "bad name": "x" } }),
+          resolve({ onError: "throw" }),
+        ],
+        page,
+        {
+          ctx: { log: { warn() {} } },
+          resolve: () => {
+            resolverRan = true;
+            return [];
+          },
+        },
+      ),
+    /Invalid HTML attribute name "bad name"/,
+  );
+
+  assert.equal(resolverRan, false);
+});
+
+test("resolver onError ignore tolerates invalid attributes in resolver fragment output", async () => {
+  const warnings = [];
+  const result = await resolveTakiContributions(
+    [resolve({ onError: "ignore", fragments: true })],
+    page,
+    {
+      ctx: { log: { warn: (...args) => warnings.push(args) } },
+      resolve: () => [externalScript("/x.js", { attributes: { "bad name": "x" } })],
+    },
+  );
+
+  assert.deepEqual(result.fragments, []);
+  assert.equal(warnings.length, 1);
+});
+
+test("resolver onError throw still rejects invalid attributes in resolver fragment output", async () => {
+  await assert.rejects(
+    () =>
+      resolveTakiContributions([resolve({ onError: "throw", fragments: true })], page, {
+        ctx: { log: { warn() {} } },
+        resolve: () => [externalScript("/x.js", { attributes: { "bad name": "x" } })],
+      }),
+    /Invalid HTML attribute name "bad name"/,
   );
 });
 
