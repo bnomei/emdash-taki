@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# This library has no services or authentication to restore. Dependencies and
+# the toolchain persist in the orb snapshot; do not reinstall them on resume.

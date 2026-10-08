@@ -17,6 +17,9 @@ coverage/
 .turbo/
 .cache/
 
+# Orb portal metadata
+.amp/portals/*
+
 # Logs
 logs/
 *.log

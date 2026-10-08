@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+repo_root="$PWD"
+export CI=true
+TIMEFORMAT='Step completed in %3R seconds'
+
+# Match the test toolchain in .github/workflows/ci.yml.
+node_version=22.12.0
+node_home="$HOME/.local/share/emdash-taki/node-v${node_version}"
+echo "Preparing Node $node_version"
+if [[ ! -x "$node_home/bin/node" ]]; then
+  case "$(uname -m)" in
+    x86_64) arch=x64 ;;
+    aarch64) arch=arm64 ;;
+    *) echo 'Unsupported Node architecture' >&2; exit 1 ;;
+  esac
+  archive="node-v${node_version}-linux-${arch}.tar.xz"
+  download="$(mktemp -d)"
+  trap 'rm -rf "$download"' EXIT
+  time (
+    cd "$download"
+    curl --fail --silent --show-error --location --retry 3 \
+      "https://nodejs.org/dist/v${node_version}/${archive}" -o "$archive"
+    curl --fail --silent --show-error --location --retry 3 \
+      "https://nodejs.org/dist/v${node_version}/SHASUMS256.txt" -o SHASUMS256.txt
+    grep " ${archive}$" SHASUMS256.txt | sha256sum --check -
+    tar -xJf "$archive"
+    mkdir -p "$(dirname "$node_home")"
+    mv "node-v${node_version}-linux-${arch}" "$node_home"
+  )
+fi
+export PATH="$node_home/bin:$PATH"
+
+npm_version="$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager.slice(4)')"
+echo "Preparing npm $npm_version"
+if [[ "$(npm --version)" != "$npm_version" ]]; then
+  time npm install --global --prefix "$node_home" "npm@$npm_version" --no-audit --no-fund
+fi
+
+# Amp and supervised services start in separate non-interactive login shells.
+profile_marker='# emdash-taki orb toolchain'
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
+  cat >> "$HOME/.bash_profile" <<EOF
+
+$profile_marker
+if [[ "\$PWD" == "$repo_root" || "\$PWD" == "$repo_root/"* ]]; then
+  export PATH="$node_home/bin:\$PATH"
+fi
+EOF
+fi
+
+echo "Installing locked dependencies ($(node --version), npm $(npm --version))"
+time npm ci --prefer-offline --no-audit --no-fund --include=dev
+echo 'Building package and declarations'
+time npm run build
