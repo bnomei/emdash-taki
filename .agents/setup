@@ -7,7 +7,7 @@ export CI=true
 TIMEFORMAT='Step completed in %3R seconds'
 
 # Match the test toolchain in .github/workflows/ci.yml.
-node_version=22.12.0
+node_version=22.22.2
 node_home="$HOME/.local/share/emdash-taki/node-v${node_version}"
 echo "Preparing Node $node_version"
 if [[ ! -x "$node_home/bin/node" ]]; then
@@ -40,7 +40,7 @@ if [[ "$(npm --version)" != "$npm_version" ]]; then
 fi
 
 # Amp and supervised services start in separate non-interactive login shells.
-profile_marker='# emdash-taki orb toolchain'
+profile_marker="# emdash-taki orb toolchain Node $node_version"
 if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
   cat >> "$HOME/.bash_profile" <<EOF
 

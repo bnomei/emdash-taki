@@ -1,6 +1,8 @@
 /** End-to-end plugin, resolver, waterfall, dedupe, and security contracts for Taki. */
 import assert from "node:assert/strict";
+import { registerHooks } from "node:module";
 import { describe, test } from "node:test";
+import { createHookPipeline, runWithContext } from "emdash";
 
 import {
   asyncScript,
@@ -42,6 +44,17 @@ import {
   resolvePageMetadata,
 } from "emdash/page";
 
+// The real runtime expects Astro's generated config module even in Node-only tests.
+const configHook = registerHooks({
+  resolve(specifier, context, nextResolve) {
+    return specifier === "virtual:emdash/config"
+      ? { url: "data:text/javascript,export default {}", shortCircuit: true }
+      : nextResolve(specifier, context);
+  },
+});
+const { EmDashRuntime } = await import("emdash/internal/plugin-test-runtime");
+configHook.deregister();
+
 const page = {
   kind: "content",
   pageType: "article",
@@ -64,12 +77,14 @@ const ctx = {
   },
 };
 
-function primeSiteSettings(settings) {
-  const key = Symbol.for("emdash:site-settings");
-  const holder = globalThis[key] ?? { version: 0, cached: null, cachedVersion: -1 };
-  holder.cached = Promise.resolve(settings);
-  holder.cachedVersion = holder.version;
-  globalThis[key] = holder;
+function withSiteSettings(settings, render) {
+  const request = { editMode: false };
+  // Prime EmDash 1.2's request cache, without a database or Astro virtual modules.
+  globalThis[Symbol.for("emdash:request-cache")].set(
+    request,
+    new Map([["siteSettings", Promise.resolve(settings)]]),
+  );
+  return runWithContext(request, render);
 }
 
 describe("renderer contract", () => {
@@ -165,8 +180,76 @@ describe("renderer contract", () => {
       },
     };
 
-    await assert.rejects(() => renderTakiStart(page, locals));
-    assert.deepEqual(fragments, [earlyBad]);
+    await runWithContext({ editMode: false }, async () => {
+      await assert.rejects(() => renderTakiStart(page, locals));
+      assert.deepEqual(fragments, [earlyBad]);
+      const plugin = createPlugin({ rules: [stylesheet("/recover.css")] });
+      assert.equal(
+        renderFragments(await plugin.hooks["page:fragments"].handler({ page }, ctx), "head"),
+        '<link rel="stylesheet" href="/recover.css">',
+      );
+    });
+  });
+
+  test("EmDash 1.2 runtime does not repeat early resources for SEO-overlaid page objects", async () => {
+    let calls = 0;
+    const plugin = createPlugin(
+      { rules: [templates({ fragments: true })] },
+      {
+        templates: {
+          article: ({ page: currentPage }) => {
+            calls += 1;
+            return [
+              stylesheet("/early.css"),
+              meta("description", currentPage.description),
+              icon("/favicon.svg"),
+              externalScript("/body.js", { placement: "body:end", phase: "early" }),
+            ];
+          },
+        },
+      },
+    );
+    const hooks = createHookPipeline([plugin], { db: {} });
+    const runtime = new EmDashRuntime({ hooks });
+    const locals = { emdash: runtime };
+    assert.equal(plugin.version, "0.2.0");
+    assert.equal(takiPlugin().version, plugin.version);
+
+    await runWithContext({ editMode: false }, async () => {
+      assert.equal(
+        await renderTakiStart(page, locals),
+        '<link rel="stylesheet" href="/early.css">',
+      );
+      // EmDashHead overlays SEO onto a fresh object before collecting contributions.
+      const headPage = { ...page, description: "Editor description" };
+      assert.equal(
+        renderPageMetadata(resolvePageMetadata(await runtime.collectPageMetadata(headPage))),
+        '<meta name="description" content="Editor description">',
+      );
+      const fragments = await runtime.collectPageFragments(headPage);
+      assert.equal(renderFragments(fragments, "head"), '<link rel="icon" href="/favicon.svg">');
+      assert.equal(
+        renderFragments(await runtime.collectPageFragments({ ...headPage }), "body:end"),
+        '<script src="/body.js"></script>',
+      );
+      assert.equal(await renderTakiStart({ ...headPage }, locals), "");
+      assert.equal(
+        await renderTakiStart({ ...page, url: "https://example.test/other" }, locals),
+        '<link rel="stylesheet" href="/early.css">',
+      );
+    });
+    assert.equal(calls, 5);
+    // A subsequent request to the same URL must discover its resources again.
+    await runWithContext({ editMode: false }, async () => {
+      assert.equal(
+        renderFragments(await runtime.collectPageFragments({ ...page }), "head"),
+        '<link rel="stylesheet" href="/early.css">\n<link rel="icon" href="/favicon.svg">',
+      );
+      assert.equal(
+        await renderTakiStart({ ...page }, locals),
+        '<link rel="stylesheet" href="/early.css">',
+      );
+    });
   });
 
   test("renderTaki renders basics before fallback metadata when no runtime is available", async () => {
@@ -214,12 +297,6 @@ describe("renderer contract", () => {
   });
 
   test("renderTaki orders runtime output from basics through late fragments", async () => {
-    primeSiteSettings({
-      favicon: {
-        url: "/favicon.ico",
-        contentType: "image/x-icon",
-      },
-    });
     const runtimePage = {
       ...page,
       canonical: "https://example.test/docs/guide",
@@ -229,15 +306,24 @@ describe("renderer contract", () => {
       [stylesheet("/runtime-early.css"), externalScript("/runtime-late.js")],
       runtimePage,
     );
-    const html = await renderTaki(
-      runtimePage,
+    const html = await withSiteSettings(
       {
-        emdash: {
-          collectPageMetadata: async () => [meta("description", "runtime description")],
-          collectPageFragments: async () => fragments,
+        favicon: {
+          url: "/favicon.ico",
+          contentType: "image/x-icon",
         },
       },
-      { basics: true },
+      () =>
+        renderTaki(
+          runtimePage,
+          {
+            emdash: {
+              collectPageMetadata: async () => [meta("description", "runtime description")],
+              collectPageFragments: async () => fragments,
+            },
+          },
+          { basics: true },
+        ),
     );
     const lines = html.split("\n");
 

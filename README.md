@@ -41,6 +41,9 @@ See [SECURITY.md](./SECURITY.md) for the full raw-helper trust-boundary guidance
 npm install @bnomei/emdash-taki
 ```
 
+Requires EmDash 1.2 or newer within the 1.x line and Node.js
+`^22.22.2 || ^24.15.0 || >=26.0.0`, matching EmDash's installed dependency graph.
+
 ## Quick Start: Template Taki Files With Static Fallbacks
 
 Put stable site-wide rules in `astro.config.mjs`, point `emdash-taki` at a
@@ -211,8 +214,10 @@ The helper renders in this order:
 
 The early group is controlled by the `emdash-taki` helpers.
 `renderTakiStart()` renders those early fragments and removes them from
-the EmDash fragment cache before stock `EmDashHead` runs, so the same stylesheet,
-preload, or script is not emitted twice.
+the EmDash fragment cache before stock `EmDashHead` runs. It also tracks consumed
+page URLs within EmDash's request context, so EmDash 1.2's fresh SEO-panel page
+objects do not emit the same early stylesheet, preload, or script again. Late
+head fragments and body fragments remain available.
 
 ### Page cache assumptions
 
@@ -237,6 +242,11 @@ This cache is intentionally per plugin instance and per page object identity:
   context object instead of mutating the existing one.
 - Because the cache uses `WeakMap`, entries can be garbage-collected after the
   page object is no longer referenced by the host runtime.
+
+EmDash 1.2 can create new SEO-overlaid page objects in its head and body
+components. Those objects trigger separate resolver passes; resolvers should be
+side-effect-free. Early-fragment consumption is request-scoped by page URL,
+independently of this object-identity resolution cache.
 
 These helpers default to `phase: "early"` because Harry Roberts' head waterfall
 puts resource discovery before SEO/social metadata:
@@ -469,9 +479,12 @@ functions, class instances, Astro components, or imported asset objects in
 For simple dynamic SEO values, prefer the EmDash page context first.
 EmDash's stock `EmDashHead` derives base description, canonical, Open Graph,
 Twitter Card, article metadata, and primary JSON-LD from the current page
-context, with plugin metadata able to override by key. The advanced
-`renderTaki()` helper mirrors that behavior when replacing `EmDashHead`
-entirely.
+context, with plugin metadata able to override by key. In EmDash 1.2 it also
+applies editor SEO-panel data, generates hreflang alternates, and registers
+JSON-LD with Astro's CSP support. Prefer `renderTakiStart()` plus `EmDashHead`
+to retain those host features. The advanced `renderTaki()` renders only the
+supplied page context, site settings, and plugin contributions; it does not
+automatically apply SEO-panel data, generate hreflang, or register CSP hashes.
 
 For custom dynamic JSON-LD or fragments that depend on data outside the page
 context, use template Taki files plus the native runtime wrapper. Render the
@@ -1148,7 +1161,8 @@ References:
 
 - ESM entry: `@bnomei/emdash-taki`.
 - Type declarations are included from `dist/`.
-- Peer dependency: `emdash` `>=0.19.0`.
+- Peer dependency: `emdash` `^1.2.0`.
+- Development and compatibility tests run against exact `emdash@1.2.0`.
 
 ## Status
 

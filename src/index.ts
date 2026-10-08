@@ -9,6 +9,7 @@
 
 import {
   definePlugin,
+  getRequestContext,
   type PageFragmentContribution,
   type PageMetadataContribution,
   type PluginCapability,
@@ -104,11 +105,14 @@ export type {
 } from "./types";
 
 const PLUGIN_ID = "taki";
-const PLUGIN_VERSION = "0.1.2";
+const PLUGIN_VERSION = "0.2.0";
 const PACKAGE_NAME = "@bnomei/emdash-taki";
 const DEFAULT_RESOLVER = "default";
 const TEMPLATE_RESOLVER = "templates";
 const EARLY_TAKI_FRAGMENT_KEY_PREFIX = "emdash-taki:early:";
+// EmDash 1.2 creates fresh SEO-overlaid page objects for its head/body components.
+// Track consumption by URL within the request, not by those object identities.
+const earlyRenderedPages = new WeakMap<object, Set<string>>();
 const PAGE_FRAGMENTS_CAPABILITY = "hooks.page-fragments:register";
 const CLOUDFLARE_WEB_ANALYTICS_SRC = "https://static.cloudflareinsights.com/beacon.min.js";
 const CLOUDFLARE_ZARAZ_SRC = "/cdn-cgi/zaraz/i.js";
@@ -211,7 +215,13 @@ export function createPlugin(
         ? {
             "page:fragments": {
               priority: options.priority ?? 40,
-              handler: async (event, ctx) => (await resolveForPage(event.page, ctx)).fragments,
+              handler: async (event, ctx) => {
+                const { fragments } = await resolveForPage(event.page, ctx);
+                const request = getRequestContext();
+                return request && earlyRenderedPages.get(request)?.has(event.page.url)
+                  ? fragments.filter((fragment) => !isEarlyTakiFragment(fragment))
+                  : fragments;
+              },
             },
           }
         : {}),
@@ -528,6 +538,15 @@ export async function renderTakiStart(
   // Render before stripping the shared cache so a render failure leaves early fragments recoverable.
   const html = pageApi.renderFragments(earlyFragments, "head");
   removeEarlyTakiFragments(fragments);
+  const request = getRequestContext();
+  if (request && earlyFragments.length > 0) {
+    let pages = earlyRenderedPages.get(request);
+    if (!pages) {
+      pages = new Set();
+      earlyRenderedPages.set(request, pages);
+    }
+    pages.add(page.url);
+  }
 
   return html;
 }
